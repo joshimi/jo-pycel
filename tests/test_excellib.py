@@ -31,9 +31,11 @@ from pycel.excellib import (
     ln,
     log,
     mod,
+    normsdist,
     npv,
     odd,
     power,
+    product,
     pv,
     round_,
     rounddown,
@@ -315,6 +317,17 @@ class TestMod:
 
 
 @pytest.mark.parametrize(
+    'param, result', (
+        (1, 0.8413447460685429),
+        (2, 0.9772498680518208),
+    )
+)
+def test_normsdist(param, result):
+    # we are currently using mean=0 and stddev=1
+    assert result == normsdist(param)
+
+
+@pytest.mark.parametrize(
     'data, expected', (
         ((0.1, ((-10000,), (3000,), (4200,), (6800,))), 1188.44),
         ((0.08, ((1, 3), (2, 4))), 8.02572628005743),
@@ -322,9 +335,9 @@ class TestMod:
         ((0.08, (8000, 9200, 10000, 12000, 14500)), 41922.06),
         ((0.07, (8000, "a", 10000, True, 14500)), 28047.34),
         ((0.08, (8000, 9200, 10000, 12000, 14500, -9000)), 40000 - 3749.47),
-        ((NA_ERROR, (8000, 9200, 10000, 12000, 14500, -9000)), NA_ERROR),
         ((0.08, (8000, DIV0, 10000, 12000, 14500, -9000)), DIV0),
         ((0.08, (8000, NUM_ERROR, 10000, 12000, 14500, -9000)), NUM_ERROR),
+        ((NA_ERROR, (8000, 9200, 10000, 12000, 14500, -9000)), NA_ERROR),
     )
 )
 def test_npv(data, expected):
@@ -340,6 +353,20 @@ def test_npv_ws(fixture_xls_copy):
     compiler = ExcelCompiler(fixture_xls_copy('npv.xlsx'))
     result = compiler.validate_serialized()
     assert result == {}
+
+
+@pytest.mark.parametrize(
+    'args, result', (
+        ((((1, 2), (3, 4)), ((1, 3), (2, 4))), 576),
+        ((((1, 2), (3, None)), ((1, 3), (2, 4))), 144),
+        ((((1, 2), (3, 4)), ((1, 3), (2, '4'))), 144),
+        ((((1, 2), (3, 4)), ((1, 3), (2, True))), 144),
+        ((((1, NAME_ERROR), (3, 4)), ((1, 3), (2, 4))), NAME_ERROR),
+        ((((1, 2), (3, 4)), ((1, 3), (NAME_ERROR, 4))), NAME_ERROR),
+    )
+)
+def test_product(args, result):
+    assert product(*args) == result
 
 
 @pytest.mark.parametrize(
