@@ -416,11 +416,12 @@ def mod(number, divisor):
 
     return number % divisor
 
+
 def get_numeric(value):
     """Return True if the argument is a valid number, return False otherwise."""
 
     # Test if boolean type
-    if np.dtype(type(value)) == bool:
+    if np.dtype(type(value)) in [bool, str]:
         return False
     else:
         try:
@@ -433,8 +434,9 @@ def get_numeric(value):
             return True
 
         # If you can't convert to float its not a number
-        except:
+        except ValueError:
             return False
+
 
 @excel_math_func
 def npv(rate, *args):
@@ -447,7 +449,7 @@ def npv(rate, *args):
     # Check if rate is a valid number
     try:
         float(rate)
-    except:
+    except ValueError:
         return VALUE_ERROR
 
     _rate = rate + 1
@@ -464,7 +466,7 @@ def npv(rate, *args):
     fil = [get_numeric(c) for c in cashflows]
     cashflows = np.array([i for (i, v) in zip(cashflows, fil) if v])
 
-    return (cashflows/np.power(_rate, np.arange(1, len(cashflows) + 1))).sum()
+    return (cashflows / np.power(_rate, np.arange(1, len(cashflows) + 1))).sum()
 
 
 @excel_math_func

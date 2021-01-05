@@ -38,7 +38,7 @@ with open('test-requirements.txt') as f:
 
 setup(
     name='pycel',
-    version=__version__,  # noqa: F821
+    version='1.0.0',
     packages=find_packages('src'),
     package_dir={'': 'src'},
     description='A library for compiling excel spreadsheets to python code '
@@ -54,11 +54,11 @@ setup(
     install_requires=[
         'networkx>=2.0,<2.5',
         'numpy',
-        'openpyxl>=2.6.2',
+        'openpyxl>=3.0.5',
         'python-dateutil',
         'ruamel.yaml',
     ],
-    python_requires='>=3.5',
+    python_requires='>=3.7',
     author='Dirk Gorissen, Stephen Rauch',
     author_email='dgorissen@gmail.com',
     maintainer='Stephen Rauch',
@@ -71,9 +71,8 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
 )
