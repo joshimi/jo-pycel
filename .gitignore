@@ -45,6 +45,8 @@ Thumbs.db
 venv/
 .tox/
 *.egg-info/
+.project
+.pydevproject
 
 docs/build/
 build/
