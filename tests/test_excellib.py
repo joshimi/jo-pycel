@@ -34,6 +34,7 @@ from pycel.excellib import (
     npv,
     odd,
     power,
+    product,
     pv,
     round_,
     rounddown,
@@ -340,6 +341,20 @@ def test_npv_ws(fixture_xls_copy):
     compiler = ExcelCompiler(fixture_xls_copy('npv.xlsx'))
     result = compiler.validate_serialized()
     assert result == {}
+
+
+@pytest.mark.parametrize(
+    'args, result', (
+        ((((1, 2), (3, 4)), ((1, 3), (2, 4))), 576),
+        ((((1, 2), (3, None)), ((1, 3), (2, 4))), 144),
+        ((((1, 2), (3, 4)), ((1, 3), (2, '4'))), 144),
+        ((((1, 2), (3, 4)), ((1, 3), (2, True))), 144),
+        ((((1, NAME_ERROR), (3, 4)), ((1, 3), (2, 4))), NAME_ERROR),
+        ((((1, 2), (3, 4)), ((1, 3), (NAME_ERROR, 4))), NAME_ERROR),
+    )
+)
+def test_product(args, result):
+    assert product(*args) == result
 
 
 @pytest.mark.parametrize(

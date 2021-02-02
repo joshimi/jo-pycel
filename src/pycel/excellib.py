@@ -289,6 +289,24 @@ def round_(number, num_digits=0):
         return round(number, num_digits)
 
 
+def product(*args):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   product-function-8e6b5b24-90ee-4650-aeec-80982a0512ce
+
+    # find any errors
+    error = next((i for i in flatten(args) if i in ERROR_CODES), None)
+    if error:
+        return error
+
+    # put the values into numpy vectors
+    values = np.array([x if isinstance(x, (float, int)) and
+                       not isinstance(x, bool) else 1
+                       for x in flatten(args)])
+
+    # return the sum product
+    return np.prod(values)
+
+
 def _round(number, num_digits, rounding):
     num_digits = int(num_digits)
     quant = Decimal(f'1E{"+-"[num_digits >= 0]}{abs(num_digits)}')
