@@ -46,6 +46,7 @@ from pycel.excellib import (
     maxifs,
     minifs,
     mod,
+    normsdist,
     now,
     npv,
     odd,
@@ -631,6 +632,17 @@ class TestMod:
         assert 2 == mod(10, 4)
         assert mod(2.2, 1) == pytest.approx(0.2)
         assert mod(2, 1.1) == pytest.approx(0.9)
+
+
+@pytest.mark.parametrize(
+    'param, result', (
+        (1, 0.8413447460685429),
+        (2, 0.9772498680518208),
+    )
+)
+def test_normsdist(param, result):
+    # we are currently using mean=0 and stddev=1
+    assert result == normsdist(param)
 
 
 @pytest.mark.parametrize(
