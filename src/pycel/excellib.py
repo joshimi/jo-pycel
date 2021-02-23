@@ -15,6 +15,7 @@ import sys
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
 
 import numpy as np
+from scipy.stats import norm
 
 from pycel.excelutil import (
     coerce_to_number,
@@ -225,6 +226,11 @@ def mod(number, divisor):
         return DIV0
 
     return number % divisor
+
+
+@excel_math_func
+def normsdist(x):
+    return norm.cdf(x, 0, 1)
 
 
 @excel_helper(cse_params=None, err_str_params=-1, number_params=0)
