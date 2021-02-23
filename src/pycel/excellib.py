@@ -11,6 +11,7 @@
 Python equivalents of various excel functions
 """
 import math
+from datetime import datetime
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
 from heapq import nlargest, nsmallest
 
@@ -417,6 +418,12 @@ def mod(number, divisor):
     return number % divisor
 
 
+def now():
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   now-function-3337fd29-145a-4347-b2e6-20c904739c46
+    return datetime.now()
+
+
 def get_numeric(value):
     """Return True if the argument is a valid number, return False otherwise."""
 
@@ -442,7 +449,6 @@ def get_numeric(value):
 def npv(rate, *args):
     # Excel reference: https://support.office.com/en-us/article/
     #   NPV-function-8672CB67-2576-4D07-B67B-AC28ACF2A568
-
     if rate in ERROR_CODES:
         return rate
 
@@ -613,6 +619,132 @@ def sumproduct(*args):
 
     # return the sum product
     return np.sum(np.prod(values, axis=0))
+
+
+def _get_datetime_format(excel_format):
+    fmt = excel_format.lower()
+    fmt.replace('a/p', 'am/pm', 1)
+    hour_fmt = '%H' if 'am/pm' not in fmt else '%I'
+    py_fmt = {
+        'dddd': '%A',
+        'ddd': '%a',
+        'dd': '%d',
+        ':mm': ':%M',
+        'mm:': '%M:',
+        ':mm:': ':%M:',
+        'mmmmm': '%b',
+        'mmmm': '%B',
+        'mmm': '%b',
+        'mm': '%m',
+        'am/pm': '%p',
+        'yyyy': '%Y',
+        'yyy': '%Y',
+        'yy': '%y',
+        'hh:': hour_fmt + ":",
+        'h:': hour_fmt + ":",
+        'hh': hour_fmt,
+        '[h]': hour_fmt,
+        'h': hour_fmt,
+        ':ss': ':%S',
+        'ss': '%S',
+        ':s': ':%S',
+        's': '%S',
+        'd': '%d',
+        'm': '%m',
+    }
+
+    replaced = set()
+    for fmt_excel, fmt_python in py_fmt.items():
+        if fmt_excel in fmt:
+            if fmt.find(fmt_excel) in replaced:
+                continue
+            fmt = fmt.replace(fmt_excel, fmt_python, 1)
+            s = fmt.find(fmt_python)
+            replaced.update(set([l for l in range(s, s + len(fmt_python))]))
+    return fmt
+
+
+def text(text_value, value_format):
+    # https://support.microsoft.com/en-us/office/
+    #   text-function-20d5ac4d-7b94-49fd-bb38-93d29371225c
+
+    date_format = _get_datetime_format(value_format)
+    if isinstance(text_value, datetime):
+        return text_value.strftime(date_format)
+    elif isinstance(text_value, str):
+        if any(x in text_value for x in ('-', '/', ':', 'am', 'pm')):
+            date_value = None
+            time_value = None
+            tokens = text_value.split(" ")
+            add_locale = ''
+            hour_fmt = 'H'
+            if 'am' in tokens or 'pm' in tokens:
+                add_locale = ' %p'
+                hour_fmt = 'I'
+
+            python_time_formats = set()
+            adds = ('', '-')
+            for add_h in adds:
+                for add_m in adds:
+                    for add_s in adds:
+                        python_time_formats.add(f'%{add_h}{hour_fmt}:%{add_m}M:%{add_s}S{add_locale}')
+
+            python_time_formats.update(set([fmt[:fmt.index('M:') + 1:] + add_locale for fmt in python_time_formats]))
+
+            for token in tokens:
+                if '/' in token or '-' in token:
+                    for python_fmt in ('%d/%m/%y', '%d/%m/%Y', '%m/%d/%y', '%m/%d/%Y', '%Y-%m-%d'):
+                        try:
+                            date_value = datetime.strptime(token, python_fmt)
+                            break
+                        except ValueError:
+                            continue
+                elif ':' in token:
+                    if 'am' in tokens:
+                        token += ' am'
+                    elif 'pm' in tokens:
+                        token += ' pm'
+                    for python_fmt in python_time_formats:
+                        try:
+                            time_value = datetime.strptime(token, python_fmt)
+                            break
+                        except ValueError:
+                            continue
+            if isinstance(time_value, datetime):
+                if isinstance(date_value, datetime):
+                    date_value = datetime.combine(date_value, time_value.time())
+                else:
+                    date_value = time_value
+
+            if isinstance(date_value, datetime):
+                return date_value.strftime(date_format)
+
+        percentage = '%' in value_format
+
+        if '#' in value_format or '0' in value_format or percentage:
+            thousand_sep = "" if "#,#" not in value_format and "0,0" not in value_format else ","
+            decimals = 0
+            dec_sep = value_format.find('.')
+            if dec_sep >= 0:
+                decimals = value_format[dec_sep::].count('0')
+            num_value = float("".join([x for x in text_value if x.isdecimal() or x == '.']))
+            if percentage:
+                num_value *= 100
+            num_value = round(num_value, decimals)
+            if decimals == 0:
+                num_value = int(num_value)
+            res = f'{num_value:{thousand_sep}.{decimals}f}{"%" if percentage else ""}'
+            if not value_format[0] in ('#', '.', ',', '0'):
+                res = value_format[0] + res
+            return res
+
+    return text_value
+
+
+def today():
+    # https://support.microsoft.com/en-us/office/
+    #   today-function-5eb3078d-a82c-4736-8930-2f51a028fdd9
+    return datetime.today()
 
 
 @excel_math_func
