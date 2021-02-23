@@ -16,6 +16,7 @@ from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
 from heapq import nlargest, nsmallest
 
 import numpy as np
+from scipy.stats import norm
 
 from pycel.excelutil import (
     coerce_to_number,
@@ -416,6 +417,11 @@ def mod(number, divisor):
         return DIV0
 
     return number % divisor
+
+
+@excel_math_func
+def normsdist(x):
+    return norm.cdf(x, 0, 1)
 
 
 def now():
