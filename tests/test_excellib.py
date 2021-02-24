@@ -880,6 +880,8 @@ def test_sumproduct(args, result):
             ('15/01/2021', "yy", '21'),
             ('15/01/2021', "yyyy", '2021'),
             # Hours, minutes and seconds
+            ('3:33 am', "h", '03'),
+            ('3:33 am', "hh", '03'),
             ('3:33 pm', "h", '15'),
             ('3:33 pm', "hh", '15'),
             ('3:33 pm', "m", '01'),  # Excel returns 1
