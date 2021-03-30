@@ -530,7 +530,6 @@ def test_sumproduct(args, result):
 
 @pytest.mark.parametrize(
     'text_value, value_format, result', (
-            (today(), 'MM/DD/YY', datetime.today().strftime('%m/%d/%y')),
             (now(), "DD/MM/YY hh:mm:ss", datetime.now().strftime('%d/%m/%y %H:%M:%S')),
             # Thousand separator
             ("12200000", "#,###", "12,200,000"),
@@ -583,10 +582,6 @@ def test_sumproduct(args, result):
 )
 def test_text(text_value, value_format, result):
     assert text(text_value, value_format).lower() == result.lower()
-
-
-def test_today():
-    assert datetime.today().date() == today().date()
 
 
 @pytest.mark.parametrize(
