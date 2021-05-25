@@ -244,6 +244,17 @@ def npv(rate, *args):
     return sum(x * rate ** -i for i, x in enumerate(cashflow, start=1))
 
 
+@excel_helper(cse_params=0)
+def numbervalue(value):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   numbervalue-function-1b05c8cf-2bfa-4437-af70-596c7ea7d879
+    try:
+        return float(value)
+
+    except ValueError:
+        return VALUE_ERROR
+
+
 @excel_math_func
 def odd(value):
     # Excel reference: https://support.microsoft.com/en-us/office/
