@@ -251,6 +251,14 @@ def floor_precise(number, significance=1):
 
 
 @excel_helper(cse_params=0, err_str_params=None)
+def isblank(value):
+
+    # Excel reference: https://support.office.com/en-us/article/
+    #   is-functions-0f2d7971-6019-40a0-a171-f2d869135665
+    return value is None
+
+
+@excel_helper(cse_params=0, err_str_params=None)
 def iserr(value):
     # Excel reference: https://support.office.com/en-us/article/
     #   is-functions-0f2d7971-6019-40a0-a171-f2d869135665
@@ -479,6 +487,17 @@ def npv(rate, *args):
     cashflows = np.array([i for (i, v) in zip(cashflows, fil) if v])
 
     return (cashflows / np.power(_rate, np.arange(1, len(cashflows) + 1))).sum()
+
+
+@excel_helper(cse_params=0)
+def numbervalue(value):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   numbervalue-function-1b05c8cf-2bfa-4437-af70-596c7ea7d879
+    try:
+        return float(value)
+
+    except ValueError:
+        return VALUE_ERROR
 
 
 @excel_math_func
@@ -745,6 +764,12 @@ def text(text_value, value_format):
             return res
 
     return text_value
+
+
+def today():
+    # https://support.microsoft.com/en-us/office/
+    #   today-function-5eb3078d-a82c-4736-8930-2f51a028fdd9
+    return datetime.today()
 
 
 @excel_math_func
