@@ -490,15 +490,17 @@ def npv(rate, *args):
 
 
 @excel_helper(cse_params=0)
-def numbervalue(value):
+def numbervalue(value, decimal_separator=None):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   numbervalue-function-1b05c8cf-2bfa-4437-af70-596c7ea7d879
     try:
+        if isinstance(value, str) and decimal_separator is not None:
+            return float(value.replace(decimal_separator, "."))
+
         return float(value)
 
-    except ValueError:
+    except (ValueError, TypeError):
         return VALUE_ERROR
-
 
 @excel_math_func
 def odd(value):
@@ -769,6 +771,7 @@ def text(text_value, value_format):
 def today():
     # https://support.microsoft.com/en-us/office/
     #   today-function-5eb3078d-a82c-4736-8930-2f51a028fdd9
+    # WARNING: this function is not compatible with openpyxl=3.0.7
     return datetime.today()
 
 
