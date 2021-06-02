@@ -584,6 +584,10 @@ def test_text(text_value, value_format, result):
     assert text(text_value, value_format).lower() == result.lower()
 
 
+def test_today():
+    assert datetime.today().date() == today().date()
+
+
 @pytest.mark.parametrize(
     'number, num_digits, result', (
         (2.5, -1, 0),
