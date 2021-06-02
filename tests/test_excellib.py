@@ -31,6 +31,7 @@ from pycel.excellib import (
     floor,
     floor_math,
     floor_precise,
+    isblank,
     iserr,
     iserror,
     iseven,
@@ -49,6 +50,7 @@ from pycel.excellib import (
     normsdist,
     now,
     npv,
+    numbervalue,
     odd,
     power,
     product,
@@ -60,6 +62,7 @@ from pycel.excellib import (
     sumifs,
     sumproduct,
     text,
+    today,
     trunc,
     x_abs,
     x_int,
@@ -445,6 +448,18 @@ def test_fact(result, number):
 def test_factdouble(result, number):
     assert factdouble(number) == result
 
+@pytest.mark.parametrize(
+    'value, expected', (
+        ('', False),
+        (1, False),
+        (-1, False),
+        ('a', False),
+        (None, True)
+    )
+)
+def test_isblank(value, expected):
+    assert isblank(value) == expected
+
 
 @pytest.mark.parametrize(
     'value, expected', (
@@ -671,6 +686,35 @@ def test_npv(data, expected):
         assert result == pytest.approx(expected, rel=1e-3)
 
 
+@pytest.mark.parametrize(
+    'arguments, expected', (
+        (1, 1.0),
+        (-1, -1.0),
+        ('1', 1.0),
+        ('12.5', 12.5),
+        ('    3  ', 3.0),
+        (('1@34', '@'), 1.34),
+        (('1@34', ''), VALUE_ERROR),
+        ('12a', VALUE_ERROR),
+        ('', VALUE_ERROR),
+        (None, VALUE_ERROR)
+    )
+)
+def test_numbervalue(arguments, expected):
+    if isinstance(arguments, tuple):
+        value, decimal_separator = arguments
+        assert numbervalue(value, decimal_separator) == expected
+
+    else:
+        assert numbervalue(arguments) == expected
+
+########
+#    try:
+#        assert numbervalue(kwarg['value'], kwarg['decimal_separator']) == expected
+#
+#    except KeyError:
+#        assert numbervalue(kwarg['value']) == expected
+########
 @pytest.mark.parametrize(
     'args, result', (
         ((((1, 2), (3, 4)), ((1, 3), (2, 4))), 576),
@@ -910,6 +954,10 @@ def test_sumproduct(args, result):
 )
 def test_text(text_value, value_format, result):
     assert text(text_value, value_format).lower() == result.lower()
+
+
+def test_today():
+    assert datetime.today().date() == today().date()
 
 
 @pytest.mark.parametrize(
