@@ -62,7 +62,6 @@ from pycel.excellib import (
     sumifs,
     sumproduct,
     text,
-    today,
     trunc,
     x_abs,
     x_int,
@@ -708,13 +707,7 @@ def test_numbervalue(arguments, expected):
     else:
         assert numbervalue(arguments) == expected
 
-########
-#    try:
-#        assert numbervalue(kwarg['value'], kwarg['decimal_separator']) == expected
-#
-#    except KeyError:
-#        assert numbervalue(kwarg['value']) == expected
-########
+
 @pytest.mark.parametrize(
     'args, result', (
         ((((1, 2), (3, 4)), ((1, 3), (2, 4))), 576),
@@ -954,10 +947,6 @@ def test_sumproduct(args, result):
 )
 def test_text(text_value, value_format, result):
     assert text(text_value, value_format).lower() == result.lower()
-
-
-def test_today():
-    assert datetime.today().date() == today().date()
 
 
 @pytest.mark.parametrize(

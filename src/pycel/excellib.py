@@ -768,13 +768,6 @@ def text(text_value, value_format):
     return text_value
 
 
-def today():
-    # https://support.microsoft.com/en-us/office/
-    #   today-function-5eb3078d-a82c-4736-8930-2f51a028fdd9
-    # WARNING: this function is not compatible with openpyxl=3.0.7
-    return datetime.today()
-
-
 @excel_math_func
 def trunc(number, num_digits=0):
     # Excel reference: https://support.office.com/en-us/article/

@@ -264,7 +264,7 @@ class ExcelOpxWrapper(ExcelWrapper):
         return self.workbook.active
 
     @staticmethod
-    def from_excel(value, offset=opxl_dt.CALENDAR_WINDOWS_1900):
+    def from_excel(value, *args, **kwargs):
         # ::HACK:: excel thinks that 1900/02/29 was a thing.  In certain
         # circumstances openpyxl will return a datetime.  This is a problem
         # as we don't want them, and having been mapped to datetime

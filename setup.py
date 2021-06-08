@@ -38,7 +38,7 @@ with open('test-requirements.txt') as f:
 
 setup(
     name='pycel',
-    version='1.0.6',
+    version='1.0.7',
     packages=find_packages('src'),
     package_dir={'': 'src'},
     description='A library for compiling excel spreadsheets to python code '
@@ -55,7 +55,7 @@ setup(
         'networkx>=2.5',
         'numpy>=1.20.1',
         'scipy>=1.6.1',
-        'openpyxl==3.0.5',
+        'openpyxl==3.0.7',
         'python-dateutil',
         'ruamel.yaml',
     ],
