@@ -313,6 +313,36 @@ def product(*args):
     return np.prod(values)
 
 
+@excel_math_func
+def pv(rate, nper, pmt, fv=0, type_=0):
+    #  Excel reference: https://support.microsoft.com/en-us/office/
+    #   pv-function-23879d31-0e02-4321-be01-da16e8168cbd
+
+    if rate != 0:
+        val = pmt * (1 + rate * type_) * ((1 + rate) ** nper - 1) / rate
+        return 1 / (1 + rate) ** nper * (-fv - val)
+    else:
+        return -fv - pmt * nper
+
+
+@excel_math_func
+def round_(number, num_digits=0):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   ROUND-function-c018c5d8-40fb-4053-90b1-b3e7f61a213c
+
+    num_digits = int(num_digits)
+    if num_digits >= 0:  # round to the right side of the point
+        return float(Decimal(repr(number)).quantize(
+            Decimal(repr(pow(10, -num_digits))),
+            rounding=ROUND_HALF_UP
+        ))
+        # see https://docs.python.org/2/library/functions.html#round
+        # and https://gist.github.com/ejamesc/cedc886c5f36e2d075c5
+
+    else:
+        return round(number, num_digits)
+
+
 def _round(number, num_digits, rounding):
     num_digits = int(num_digits)
     quant = Decimal(f'1E{"+-"[num_digits >= 0]}{abs(num_digits)}')
