@@ -12,10 +12,13 @@ import hashlib
 import itertools as it
 import json
 import logging
+import math
 import os
 import pickle
+from numbers import Number
 
 import networkx as nx
+import numpy as np
 from ruamel.yaml import YAML
 
 from pycel.excelformula import ExcelFormula
@@ -27,13 +30,14 @@ from pycel.excelutil import (
     is_address,
     iterative_eval_tracker,
     list_like,
-    VALUE_ERROR,
 )
 from pycel.excelwrapper import ExcelOpxWrapper, ExcelOpxWrapperNoData
 
 REF_START = '=_REF_("'
 REF_END = '")'
 REF_FORMAT = REF_START + '{}' + REF_END
+
+Mismatch = collections.namedtuple('Mismatch', 'original calced formula')
 
 pycel_logger = logging.getLogger('pycel')
 
@@ -99,14 +103,18 @@ class ExcelCompiler:
             if self.cycles is None:
                 self.cycles = wb_cycles
             elif wb_cycles != bool(self.cycles):
-                msg = "Initialized with cycles: {}, while workbook says: {}"
-                self.log.warning(msg.format(self.cycles, wb_cycles))
+                self.log.warning(
+                    f"Initialized with cycles: {self.cycles}, while workbook says: {wb_cycles}")
 
             if self.cycles:
                 self.cycles = dict(
                     iterations=self.excel.workbook.calculation.iterateCount,
                     tolerance=self.excel.workbook.calculation.iterateDelta,
                 )
+
+        elif self.cycles:
+            assert isinstance(self.cycles, dict)
+            assert self.cycles.keys() == {'iterations', 'tolerance'}
 
         self.Cell = _CycleCell if self.cycles else _Cell
         self.evaluate = (self._evaluate_iterative if self.cycles else
@@ -180,6 +188,8 @@ class ExcelCompiler:
         def cell_value(a_cell):
             if a_cell.formula and a_cell.formula.python_code:
                 return '=' + a_cell.formula.python_code
+            elif isinstance(a_cell.value, np.float64):
+                return float(a_cell.value)
             else:
                 return a_cell.value
 
@@ -232,10 +242,8 @@ class ExcelCompiler:
             data = YAML().load(f)
 
         excel = _CompiledImporter(filename, data)
-        excel_compiler = cls(excel=excel, cycles=data.get('cycles', False))
+        excel_compiler = cls(excel=excel, cycles=data.pop('cycles', False))
         excel.compiler = excel_compiler
-        if 'cycles' in data:
-            del data['cycles']
 
         def add_line_numbers(cell_addr, line_number):
             formula = excel_compiler.cell_map[cell_addr].formula
@@ -302,8 +310,7 @@ class ExcelCompiler:
         unknown_types = tuple(ft for ft in file_types
                               if ft not in self.save_file_extensions)
         if unknown_types:
-            raise ValueError('Unknown file types: {}'.format(
-                ' '.join(unknown_types)))
+            raise ValueError(f"Unknown file types: {' '.join(unknown_types)}")
 
         pickle_extension = next((ft for ft in file_types
                                  if ft.startswith('p')), None)
@@ -315,7 +322,7 @@ class ExcelCompiler:
         if extra_extensions:
             raise ValueError(
                 'Only allowed one pickle extension and one text extension. '
-                'Extras: {}'.format(extra_extensions))
+                f'Extras: {extra_extensions}')
 
         is_json = non_pickle_extension and non_pickle_extension[0] == 'j'
 
@@ -339,10 +346,11 @@ class ExcelCompiler:
                     pickle.dump(excel_compiler, f)
 
     @classmethod
-    def from_file(cls, filename):
+    def from_file(cls, filename, plugins=None):
         """ Load the spreadsheet saved by `to_file`
 
         :param filename: filename to load from, can be xlsx_name
+        :param plugins: module paths for plugin lib functions
         """
 
         extension = cls._filename_has_extension(filename) or next(
@@ -350,8 +358,7 @@ class ExcelCompiler:
              if os.path.exists(filename + '.' + ext)), None)
 
         if not extension:
-            raise ValueError("Unrecognized file type or compiled file not found"
-                             ": '{}'".format(filename))
+            raise ValueError(f"Unrecognized file type or compiled file not found: '{filename}'")
 
         if not filename.endswith(extension):
             filename += '.' + extension
@@ -363,6 +370,14 @@ class ExcelCompiler:
             excel_compiler = cls._from_text(
                 filename, is_json=extension == 'json')
 
+        excel_compiler.excel = _CompiledImporter('', {
+            'filename': excel_compiler.filename,
+            'cell_map': excel_compiler.cell_map,
+        })
+        excel_compiler.range_todos = []
+        excel_compiler.graph_todos = []
+
+        excel_compiler._plugin_modules = plugins
         return excel_compiler
 
     def export_to_dot(self, filename=None):
@@ -419,7 +434,9 @@ class ExcelCompiler:
 
         elif address not in self.cell_map:
             address = AddressRange.create(address).address
-            assert address in self.cell_map
+            assert address in self.cell_map, (
+                f'Address "{address}" not found in the cell map. Evaluate the '
+                'address, or an address that references it, to place it in the cell map.')
 
         if set_as_range and list_like(value) and not (
                 value and list_like(value[0])):
@@ -441,7 +458,7 @@ class ExcelCompiler:
     def _reset(self, cell):
         if cell.needs_calc:
             return
-        self.log.info("Resetting {}".format(cell.address))
+        self.log.info(f"Resetting {cell.address}")
         cell.value = None
 
         if cell in self.dep_graph:
@@ -458,10 +475,10 @@ class ExcelCompiler:
         cell = self.cell_map[address]
 
         if iterative_eval_tracker.is_calced(address):
-            yield "{}{} <- cycle".format(" " * indent, address)
+            yield f'{" " * indent}{address} <- cycle'
         else:
             iterative_eval_tracker.calced(address)
-            yield "{}{} = {}".format(" " * indent, address, cell.value)
+            yield f'{" " * indent}{address} = {cell.value}'
             for children in sorted(self.dep_graph.predecessors(cell),
                                    key=lambda a: a.address.address):
                 yield from self._value_tree_str(
@@ -474,10 +491,7 @@ class ExcelCompiler:
                 cell.value = None
 
         for cell in self.cell_map.values():
-            if isinstance(cell, _CellRange):
-                self._evaluate_range(cell.address.address)
-            else:
-                self._evaluate(cell.address.address)
+            self.evaluate(cell.address.address)
 
     def trim_graph(self, input_addrs, output_addrs):
         """Remove unneeded cells from the graph"""
@@ -505,21 +519,18 @@ class ExcelCompiler:
                     walk_dependents(self.cell_map[addr])
                     msg = ''
                 else:
-                    msg = ('warning',
-                           'Address {} not found in cell_map'.format(addr))
+                    msg = 'warning', f'Address {addr} not found in cell_map'
             except nx.exception.NetworkXError as exc:
                 if AddressRange(addr) not in output_addrs:
-                    msg = 'error', '{}: which usually means no outputs ' \
-                                   'are dependant on it.'.format(exc)
+                    msg = 'error', f'{exc}: which usually means no outputs are dependant on it.'
                 else:
                     msg = 'warning', str(exc)
             if msg:
                 missing_dependants.add((addr, *msg))
         if missing_dependants:
             for addr, level, msg in missing_dependants:
-                getattr(self.log, level)("Input address {}: {}".format(
-                    addr, msg
-                ))
+                getattr(self.log, level)(f"Input address {addr}: {msg}")
+
         if any(m[1] != 'warning' for m in missing_dependants):
             raise ValueError('\n' + '\n'.join(
                 map(str, sorted(missing_dependants, key=lambda x: x[2]))))
@@ -542,7 +553,7 @@ class ExcelCompiler:
                         # trim this cell, now we will need only its value
                         needed_cells.add(child_address)
                         child_cell.formula = None
-                        self.log.debug('Trimming {}'.format(child_address))
+                        self.log.debug(f'Trimming {child_address}')
 
         for addr in output_addrs:
             walk_precedents(self.cell_map[addr.address])
@@ -551,7 +562,7 @@ class ExcelCompiler:
         for addr in input_addrs:
             cell = self.cell_map.get(addr)
             if cell and getattr(cell, 'formula', None):
-                self.log.info("{} is not a leaf node".format(addr))
+                self.log.info(f"{addr} is not a leaf node")
 
         # 5) remove unneeded cells
         cells_to_remove = tuple(addr for addr in self.cell_map
@@ -559,7 +570,28 @@ class ExcelCompiler:
         for addr in cells_to_remove:
             del self.cell_map[addr]
 
-    def validate_calcs(self, output_addrs=None, sheet=None, verify_tree=True):
+    def validate_serialized(self, **kwargs):
+        assert self.excel, "validate_serialized() needs to be run on the compiler"
+        failed = self.validate_calcs(**kwargs)
+        if failed != {}:
+            return failed
+
+        self.to_file(file_types='json')
+        compiled = ExcelCompiler.from_file(self.filename + '.json')
+        compiled.recalculate()
+        for addr in self.cell_map:
+            if not self.cell_map[addr].close_enough(
+                    compiled.cell_map[addr].value, tol=kwargs.get('tolerance')):
+                failed[addr] = Mismatch(
+                    self.cell_map[addr].value, compiled.cell_map[addr].value,
+                    str(self.cell_map[addr].formula))
+                print('{} mismatch  {} -> {}  {}'.format(
+                    addr, self.cell_map[addr].value, self.cell_map[addr].value,
+                    str(self.cell_map[addr].formula)))
+        return failed
+
+    def validate_calcs(self, output_addrs=None, sheet=None, verify_tree=True,
+                       tolerance=None, raise_exceptions=False):
         """For each address, calc the value, and verify that it matches
 
         This is a debugging tool which will show which cells evaluate
@@ -570,12 +602,9 @@ class ExcelCompiler:
         :param verify_tree: Follow the tree to any precedent nodes
         :return: dict of addresses with good/bad values that failed to verify
         """
-
-        Mismatch = collections.namedtuple('Mismatch', 'original calced formula')
-
         if output_addrs is None:
             to_verify = list(self.formula_cells(sheet))
-            print('Found {} formulas to evaluate'.format(len(to_verify)))
+            print(f'Found {len(to_verify)} formulas to evaluate')
         elif list_like(output_addrs):
             to_verify = [AddressCell(addr) for addr in flatten(output_addrs)]
         else:
@@ -583,10 +612,12 @@ class ExcelCompiler:
 
         verified = set()
         failed = {}
+        if self.cycles:
+            iterative_eval_tracker(**self.cycles)
         while to_verify:
             addr = to_verify.pop()
             if len(to_verify) % 100 == 0:
-                print("{} formulas left to process".format(len(to_verify)))
+                print(f"{len(to_verify)} formulas left to process")
             try:
                 self._gen_graph(addr)
                 cell = self.cell_map[addr.address]
@@ -594,15 +625,14 @@ class ExcelCompiler:
                         not cell.address.is_unbounded_range):
                     original_value = cell.value
                     if original_value == str(cell.formula):
-                        self.log.debug(
-                            "No Orig data?: {}: {}".format(addr, cell.value))
+                        self.log.debug(f"No Orig data?: {addr}: {cell.value}")
                         continue
 
                     cell.value = None
-                    self._evaluate(addr.address)
+                    self.evaluate(addr.address)
 
                     if not (original_value is None or
-                            cell.close_enough(original_value)):
+                            cell.close_enough(original_value, tol=tolerance)):
                         failed.setdefault('mismatch', {})[str(addr)] = Mismatch(
                             original_value, cell.value,
                             cell.formula.base_formula)
@@ -610,9 +640,9 @@ class ExcelCompiler:
                             addr, original_value, cell.value,
                             cell.formula.base_formula))
 
-                        # do it again to allow easy breakpointing
+                        # do it again to allow easy break-pointing
                         cell.value = None
-                        self._evaluate(cell.address.address)
+                        self.evaluate(cell.address.address)
 
                 verified.add(addr)
                 if verify_tree:  # pragma: no branch
@@ -620,6 +650,8 @@ class ExcelCompiler:
                         if addr not in verified:  # pragma: no branch
                             to_verify.append(addr)
             except Exception as exc:
+                if raise_exceptions:
+                    raise
                 cell = self.cell_map.get(addr.address, None)
                 formula = cell and cell.formula.base_formula
                 exc_str = str(exc)
@@ -632,8 +664,7 @@ class ExcelCompiler:
 
                 else:
                     if len(exc_str_split) == 1:
-                        exc_str_key = '{}: {}'.format(
-                            type(exc).__name__, exc_str)
+                        exc_str_key = f'{type(exc).__name__}: {exc_str}'
                     else:
                         exc_str_key = exc_str_split[-2]  # pragma: no cover
                     not_implemented = exc_str_key.startswith(
@@ -706,7 +737,7 @@ class ExcelCompiler:
                         self._make_cells(addr)
             return added
 
-        self.log.debug('_make_cells: {}'.format(address))
+        self.log.debug(f'_make_cells: {address}')
         excel_data = self.excel.get_range(address)
         if address.is_range:
             if excel_data.address != address:
@@ -734,13 +765,12 @@ class ExcelCompiler:
         cell_range = self.cell_map.get(address)
         if cell_range is None:
             # we don't save the _CellRange values in the text format files
-            assert '!' in address, "{} missing sheetname".format(address)
+            assert '!' in address, f"{address} missing sheetname"
             self._gen_graph(address)
             cell_range = self.cell_map[address]
 
         if cell_range.needs_calc:
-            self.log.debug("Evaluating: {}, {}".format(
-                cell_range.address, cell_range.python_code))
+            self.log.debug(f"Evaluating: {cell_range.address}, {cell_range.python_code}")
             if cell_range.address.is_unbounded_range:
                 bounded_addr = str(self.eval(cell_range))
                 bounded_addr_cell = self.cell_map.get(bounded_addr)
@@ -756,8 +786,7 @@ class ExcelCompiler:
             else:
                 # CSE Array Formula
                 data = self.eval(cell_range, cell_range.address)
-            self.log.info("Range %s evaluated to '%s'" % (
-                cell_range.address, data))
+            self.log.info(f"Range {cell_range.address} evaluated to '{data}'")
 
             cell_range.value = data
 
@@ -765,6 +794,9 @@ class ExcelCompiler:
 
     def _evaluate(self, address):
         """Evaluate a single cell"""
+        if address not in self.cell_map:
+            # INDIRECT() and OFFSET() can produce addresses we don't already have loaded
+            self._gen_graph(address)
         cell = self.cell_map[address]
 
         # calculate the cell value for formulas and ranges
@@ -773,12 +805,30 @@ class ExcelCompiler:
                 self._evaluate_range(cell.address.address)
 
             elif cell.python_code:
-                self.log.debug(
-                    "Evaluating: {}, {}".format(cell.address, cell.python_code))
+                self.log.debug(f"Evaluating: {address}, {cell.python_code}")
                 value = self.eval(cell)
-                self.log.info("Cell %s evaluated to '%s' (%s)" % (
-                    cell.address, value, type(value).__name__))
-                cell.value = VALUE_ERROR if list_like(value) else value
+                if is_address(value):
+                    # eval produced an address (aka: a reference)
+                    if value.is_range:
+                        # complain as we are not going to do any spilling
+                        self.log.warning(f"Cell {address} evaluated to '{value}',"
+                                         f" truncating to '{value.start}'")
+                        value = value.start
+                    else:
+                        self.log.info(f"Cell {address} evaluated to address '{value}'")
+
+                    # fetch the value for this cell, if it exists
+                    ref_addr = value.address
+                    if ref_addr not in self.cell_map and getattr(self, 'excel', None):
+                        # INDIRECT() can produce addresses we don't already have loaded
+                        self._gen_graph(ref_addr)
+
+                    value = self.cell_map[ref_addr].value
+                else:
+                    self.log.info(
+                        f"Cell {cell.address} evaluated to '{value}' ({type(value).__name__})")
+                cell.value = (value[0][0] if list_like(value[0]) else value[0]
+                              ) if list_like(value) else value
 
         return cell.value
 
@@ -820,7 +870,7 @@ class ExcelCompiler:
     def _evaluate_iterative(self, address, iterations=None, tolerance=None):
         """ evaluate a cell or cells in a spreadsheet with cycles
 
-        reference: https://support.office.com/en-us/article/
+        reference: https://support.microsoft.com/en-us/office/
                     8540bd0f-6e97-4483-bcf7-1b49cd50d123
 
         :param address: str, AddressRange, AddressCell or a tuple or list
@@ -833,8 +883,8 @@ class ExcelCompiler:
         :return: evaluated value/values
         """
 
-        iterations = iterations or self.cycles['iterations']
-        tolerance = tolerance or self.cycles['tolerance']
+        iterations = iterations or self.cycles['iterations'] or 10000
+        tolerance = tolerance or self.cycles['tolerance'] or 0.01
 
         progress_tracker = iterative_eval_tracker(iterations, tolerance)
         while True:
@@ -857,7 +907,7 @@ class ExcelCompiler:
                 self._process_gen_graph()
                 return
             else:
-                raise ValueError('Unknown seed: {}'.format(seed))
+                raise ValueError(f'Unknown seed: {seed}')
 
         # get/set the current sheet
         if not seed.has_sheet:
@@ -883,7 +933,7 @@ class ExcelCompiler:
             # connect the dependant cells in the graph
             dependant = self.graph_todos.pop()
 
-            self.log.debug("Handling {}".format(dependant.address))
+            self.log.debug(f"Handling {dependant.address}")
 
             for precedent_address in dependant.needed_addresses:
                 if precedent_address.address not in self.cell_map:
@@ -893,16 +943,16 @@ class ExcelCompiler:
                     self.cell_map[precedent_address.address], dependant)
 
         # calc the values for ranges
-        for range_todo in reversed(self.range_todos):
-            self._evaluate_range(range_todo)
-        self.range_todos = []
+        try:
+            for range_todo in reversed(self.range_todos):
+                self._evaluate_range(range_todo)
+        finally:
+            self.range_todos = []
 
         self.log.info(
-            "Graph construction done, %s nodes, "
-            "%s edges, %s self.cell_map entries" % (
-                len(self.dep_graph.nodes()),
-                len(self.dep_graph.edges()),
-                len(self.cell_map))
+            f"Graph construction done, {len(self.dep_graph.nodes())} nodes, "
+            f"{len(self.dep_graph.edges())} edges, "
+            f"{len(self.cell_map)} self.cell_map entries"
         )
 
     def eval_conditional_formats(self, address):
@@ -946,12 +996,11 @@ class ExcelCompiler:
             for f in formats:
                 excel_formula = ExcelFormula(f.formula, cell=phony_cell)
                 python_code = excel_formula.python_code
-                format_strs.append('({}, {}, {})'.format(
-                    python_code, f.dxf_id, int(bool(f.stop_if_true))))
+                format_strs.append(
+                    f'({python_code}, {f.dxf_id}, {int(bool(f.stop_if_true))})')
                 self.conditional_formats[f.dxf_id] = f.dxf
 
-            python_code = '=conditional_format_ids({})'.format(
-                ', '.join(format_strs))
+            python_code = f"=conditional_format_ids({', '.join(format_strs)})"
             a_cell = _Cell(address, formula=python_code)
             self.cell_map[cf_addr] = a_cell
             self._gen_graph(a_cell.formula.needed_addresses)
@@ -988,12 +1037,13 @@ class _CellBase:
         return self.value is None
 
     def close_enough(self, value, rel=0.00001, tol=None):
-        if (isinstance(self.value, (int, float)) and self.value and
-                isinstance(value, (int, float)) and value):
+        if isinstance(self.value, Number) and isinstance(value, Number):
             if tol is not None:
                 return abs(value - self.value) < (1 + rel) * tol
+            elif value and self.value:
+                return math.isclose(self.value, value, rel_tol=rel)
             else:
-                return 1 - rel < abs(value / self.value) < 1 + rel
+                return math.isclose(self.value, value, abs_tol=1e-8)
         else:
             return self.value == value
 
@@ -1001,16 +1051,16 @@ class _CellBase:
 class _CellRange(_CellBase):
     # TODO: only supports rectangular ranges
 
-    serialize = False
-
     def __init__(self, data, excel=None):
         formula = None
         if data.formula and isinstance(data.formula, str):
-            assert data.formula.startswith('={') and data.formula[-1] == '}'
-            formula = '=' + data.formula[2:-1]
+            formula = data.formula
+            if formula.startswith('={') and formula[-1] == '}':
+                formula = '=' + formula[2:-1]
+
         super().__init__(address=data.address, formula=formula, excel=excel)
         if not self.address.sheet:
-            raise ValueError("Must pass in a sheet: {}".format(self.address))
+            raise ValueError(f"Must pass in a sheet: {self.address}")
 
         self.addresses = data.address.resolve_range
         self.size = data.address.size
@@ -1028,6 +1078,11 @@ class _CellRange(_CellBase):
 
     def __iter__(self):
         return flatten(self.addresses)
+
+    @property
+    def serialize(self):
+        # Ranges with formulas need to be serialized
+        return bool(self.formula)
 
     @property
     def needed_addresses(self):
@@ -1065,7 +1120,7 @@ class _Cell(_CellBase):
         return state
 
     def __repr__(self):
-        return "{} -> {}".format(self.address, self.formula or self.value)
+        return f"{self.address} -> {self.formula or self.value}"
 
     __str__ = __repr__
 
@@ -1138,18 +1193,22 @@ class _CompiledImporter:
         self.compiler = None
 
     def get_range(self, address):
+        cell = self._get_cell(address)
 
         if not address.is_range:
-            return self._get_cell(address)
+            return cell
 
         elif address.is_unbounded_range:
             # this is a unbounded range to range mapping, disassemble
-            cell = self._get_cell(address)
             formula = cell.formula
             assert formula.startswith(REF_START)
             assert formula.endswith(REF_END)
             ref_addr = formula[len(REF_START):-len(REF_END)]
             return self.get_range(AddressRange(ref_addr))
+
+        elif cell.formula:
+            return cell
+
         else:
             # need to map col or row ranges to a specific range
             addresses = address.resolve_range

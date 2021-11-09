@@ -13,6 +13,7 @@ import os
 import pickle
 from unittest import mock
 
+import numpy as np
 import pytest
 
 from pycel.excelformula import (
@@ -57,35 +58,39 @@ range_inputs = [
     FormulaTest(
         '=SUM(B5:B15)',
         'B5:B15|SUM',
-        'xsum(_R_("B5:B15"))'),
+        'sum_(_R_("B5:B15"))'),
     FormulaTest(
         '=SUM(B5:B15,D5:D15)',
         'B5:B15|D5:D15|SUM',
-        'xsum(_R_("B5:B15"), _R_("D5:D15"))'),
+        'sum_(_R_("B5:B15"), _R_("D5:D15"))'),
     FormulaTest(
         '=SUM(B5:B15 A7:D7)',
         'B5:B15|A7:D7| |SUM',
-        'xsum(_R_(str(_REF_("B5:B15") & _REF_("A7:D7"))))'),
+        'sum_(_R_(str(_REF_("B5:B15") & _REF_("A7:D7"))))'),
     FormulaTest(
         '=SUM((A:A,1:1))',
         'A:A|1:1|,|SUM',
-        'xsum(_R_("A:A"), _R_("1:1"))'),
+        'sum_(_R_("A:A"), _R_("1:1"))'),
     FormulaTest(
         '=SUM((A:A A1:B1))',
         'A:A|A1:B1| |SUM',
-        'xsum(_R_(str(_REF_("A:A") & _REF_("A1:B1"))))'),
+        'sum_(_R_(str(_REF_("A:A") & _REF_("A1:B1"))))'),
     FormulaTest(
         '=SUM(D9:D11,E9:E11,F9:F11)',
         'D9:D11|E9:E11|F9:F11|SUM',
-        'xsum(_R_("D9:D11"), _R_("E9:E11"), _R_("F9:F11"))'),
+        'sum_(_R_("D9:D11"), _R_("E9:E11"), _R_("F9:F11"))'),
     FormulaTest(
         '=SUM((D9:D11,(E9:E11,F9:F11)))',
         'D9:D11|E9:E11|F9:F11|,|,|SUM',
-        'xsum(_R_("D9:D11"), (_R_("E9:E11"), _R_("F9:F11")))'),
+        'sum_(_R_("D9:D11"), (_R_("E9:E11"), _R_("F9:F11")))'),
+    FormulaTest(
+        '=SUMIF(A1:A5, ">""", B1:B5)',
+        'A1:A5|">"""|B1:B5|SUMIF',
+        'sumif(_R_("A1:A5"), ">\\"", _R_("B1:B5"))'),
     FormulaTest(
         '={SUM(B2:D2*B3:D3)}',
         'B2:D2|B3:D3|*|SUM|ARRAYROW|ARRAY',
-        '((xsum(_R_("B2:D2") * _R_("B3:D3")),),)'),
+        '((sum_(_R_("B2:D2") * _R_("B3:D3")),),)'),
     FormulaTest(
         '=RIGHT({"A","B"},A2:B2)',
         '"A"|"B"|ARRAYROW|ARRAY|A2:B2|RIGHT',
@@ -101,7 +106,7 @@ range_inputs = [
     FormulaTest(
         '=SUM(123 + SUM(456) + (45<6))+456+789',
         '123|456|SUM|+|45|6|<|+|SUM|456|+|789|+',
-        '(xsum((123 + xsum(456)) + (45 < 6)) + 456) + 789'),
+        '(sum_((123 + sum_(456)) + (45 < 6)) + 456) + 789'),
     FormulaTest(
         '=AVG(((((123 + 4 + AVG(A1:A2))))))',
         '123|4|+|A1:A2|AVG|+|AVG',
@@ -112,7 +117,7 @@ basic_inputs = [
     FormulaTest(
         '=SUM((A:A 1:1))',
         'A:A|1:1| |SUM',
-        'xsum(_R_(str(_REF_("A:A") & _REF_("1:1"))))'),
+        'sum_(_R_(str(_REF_("A:A") & _REF_("1:1"))))'),
     FormulaTest(
         '=A1',
         'A1',
@@ -128,7 +133,7 @@ basic_inputs = [
     FormulaTest(
         '=atan2(A1,B1)',
         'A1|B1|atan2',
-        'xatan2(_C_("A1"), _C_("B1"))'),
+        'atan2_(_C_("A1"), _C_("B1"))'),
     FormulaTest(
         '=5*log(sin()+2)',
         '5|sin|2|+|log|*',
@@ -180,15 +185,15 @@ basic_inputs = [
     FormulaTest(
         '=SUM(B5:B15,D5:D15)%',
         'B5:B15|D5:D15|SUM|%',
-        'xsum(_R_("B5:B15"), _R_("D5:D15")) / 100'),
+        'sum_(_R_("B5:B15"), _R_("D5:D15")) / 100'),
     FormulaTest(
         '=AND(G3, 1)',
         'G3|1|AND',
-        'x_and(_C_("G3"), 1)'),
+        'and_(_C_("G3"), 1)'),
     FormulaTest(
         '=OR(TRUE, TRUE(), FALSE, FALSE())',
         'TRUE|TRUE|FALSE|FALSE|OR',
-        'x_or(True, True, False, False)'),
+        'or_(True, True, False, False)'),
     FormulaTest(
         '=--4',
         '4|-|-',
@@ -232,15 +237,15 @@ if_inputs = [
         '   "  more ""test"" text"',
         '"a"|"a"|"b"|ARRAYROW|"c"|#N/A|ARRAYROW|1|-|TRUE|ARRAYROW|ARRAY|=|'
         '"yes"|"no"|IF|"  more ""test"" text"|&',
-        'x_if("a" == (("a", "b",), ("c", "#N/A",), (-1, True,),), "yes", "no")'
+        'if_("a" == (("a", "b",), ("c", "#N/A",), (-1, True,),), "yes", "no")'
         ' & "  more \\"test\\" text"'),
     FormulaTest(
         '=IF(R13C3>DATE(2002,1,6),0,IF(ISERROR(R[41]C[2]),0,IF(R13C3>=R[41]C[2]'
         ',0, IF(AND(R[23]C[11]>=55,R[24]C[11]>=20),R53C3,0))))',
         'R13C3|2002|1|6|DATE|>|0|R[41]C[2]|ISERROR|0|R13C3|R[41]C[2]|>=|0|'
         'R[23]C[11]|55|>=|R[24]C[11]|20|>=|AND|R53C3|0|IF|IF|IF|IF',
-        'x_if(_C_("C13") > date(2002, 1, 6), 0, x_if(iserror(_C_("C42")), 0, '
-        'x_if(_C_("C13") >= _C_("C42"), 0, x_if(x_and('
+        'if_(_C_("C13") > date(2002, 1, 6), 0, if_(iserror(_C_("C42")), 0, '
+        'if_(_C_("C13") >= _C_("C42"), 0, if_(and_('
         '_C_("L24") >= 55, _C_("L25") >= 20), _C_("C53"), 0))))'),
     FormulaTest(
         '=IF(R[39]C[11]>65,R[25]C[42],ROUND((R[11]C[11]*IF(OR(AND('
@@ -253,52 +258,60 @@ if_inputs = [
         'R[44]C[11]|R[43]C[11]|IF|*|R[14]C[11]|R[39]C[11]|55|>=|'
         'R[40]C[11]|20|>=|AND|R[40]C[11]|20|>=|R11C3|"YES"|=|AND|OR|'
         'R[45]C[11]|R[43]C[11]|IF|*|+|0|ROUND|IF',
-        'x_if(_C_("L40") > 65, _C_("AQ26"), x_round((_C_("L12") * x_if(x_or('
-        'x_and(_C_("L40") >= 55, _C_("L41") >= 20), x_and(_C_("L41") >= 20, '
+        'if_(_C_("L40") > 65, _C_("AQ26"), round_((_C_("L12") * if_(or_('
+        'and_(_C_("L40") >= 55, _C_("L41") >= 20), and_(_C_("L41") >= 20, '
         '_C_("C11") == "YES")), _C_("L45"), _C_("L44"))) + (_C_("L15") * '
-        'x_if(x_or(x_and(_C_("L40") >= 55, _C_("L41") >= 20), x_and(_C_("L41") '
+        'if_(or_(and_(_C_("L40") >= 55, _C_("L41") >= 20), and_(_C_("L41") '
         '>= 20, _C_("C11") == "YES")), _C_("L46"), _C_("L44"))), 0))'),
     FormulaTest(
         '=IF(AI119="","",E119)',
         'AI119|""|=|""|E119|IF',
-        'x_if(_C_("AI119") == "", "", _C_("E119"))'),
+        'if_(_C_("AI119") == "", "", _C_("E119"))'),
     FormulaTest(
         '=IF(P5=1.0,"NA",IF(P5=2.0,"A",IF(P5=3.0,"B",IF(P5=4.0,"C",'
         'IF(P5=5.0,"D",IF(P5=6.0,"E",IF(P5=7.0,"F",IF(P5=8.0,"G"))))))))',
         'P5|1.0|=|"NA"|P5|2.0|=|"A"|P5|3.0|=|"B"|P5|4.0|=|"C"|P5|5.0|=|'
         '"D"|P5|6.0|=|"E"|P5|7.0|=|"F"|P5|8.0|=|"G"|IF|IF|IF|IF|IF|IF|IF|IF',
-        'x_if(_C_("P5") == 1.0, "NA", x_if(_C_("P5") == 2.0, "A", '
-        'x_if(_C_("P5") == 3.0, "B", x_if(_C_("P5") == 4.0, "C", '
-        'x_if(_C_("P5") == 5.0, "D", x_if(_C_("P5") == 6.0, "E", '
-        'x_if(_C_("P5") == 7.0, "F", x_if(_C_("P5") == 8.0, "G"))))))))'),
+        'if_(_C_("P5") == 1.0, "NA", if_(_C_("P5") == 2.0, "A", '
+        'if_(_C_("P5") == 3.0, "B", if_(_C_("P5") == 4.0, "C", '
+        'if_(_C_("P5") == 5.0, "D", if_(_C_("P5") == 6.0, "E", '
+        'if_(_C_("P5") == 7.0, "F", if_(_C_("P5") == 8.0, "G"))))))))'),
 ]
 
 fancy_reference_inputs = [
     FormulaTest(
         '=A8:index(B2,1)',
         'A8|B2|1|index|:',
-        '_R_(str(_REF_("A8") | index(_REF_("B2"), 1)))'),
+        '_R_(str(_REF_("A8") ** index(_REF_("B2"), 1)))'),
     FormulaTest(
         '=A8:B8:index(B2,1)',
         'A8:B8|B2|1|index|:',
-        '_R_(str(_REF_("A8:B8") | index(_REF_("B2"), 1)))'),
+        '_R_(str(_REF_("A8:B8") ** index(_REF_("B2"), 1)))'),
     FormulaTest(
         '=index(B2,1):A8',
         'B2|1|index|A8|:',
-        '_R_(str(index(_REF_("B2"), 1) | _REF_("A8")))'),
+        '_R_(str(index(_REF_("B2"), 1) ** _REF_("A8")))'),
     FormulaTest(
         '=index(B2,1):A8:B8',
         'B2|1|index|A8:B8|:',
-        '_R_(str(index(_REF_("B2"), 1) | _REF_("A8:B8")))'),
+        '_R_(str(index(_REF_("B2"), 1) ** _REF_("A8:B8")))'),
     FormulaTest(
         '=A8:index(B2,1):B2',
         'A8|B2|1|index|:|B2|:',
-        '_R_(str((_REF_(str(_REF_("A8") | index(_REF_("B2"), 1)))) | '
+        '_R_(str((_REF_(str(_REF_("A8") ** index(_REF_("B2"), 1)))) ** '
         '_REF_("B2")))'),
+    FormulaTest(
+        '=INDIRECT("sheet1!$A$1:$B$2")',
+        '"sheet1!$A$1:$B$2"|INDIRECT',
+        'indirect("sheet1!$A$1:$B$2", True, "")'),
+    FormulaTest(
+        '=INDIRECT("sheet1!$A$1:$B$2", FALSE)',
+        '"sheet1!$A$1:$B$2"|FALSE|INDIRECT',
+        'indirect("sheet1!$A$1:$B$2", False, "")'),
     FormulaTest(
         '=SUM(sheet1!$A$1:$B$2)',
         'sheet1!$A$1:$B$2|SUM',
-        'xsum(_R_("sheet1!A1:B2"))'),
+        'sum_(_R_("sheet1!A1:B2"))'),
     FormulaTest(
         '=[data.xls]sheet1!$A$1',
         '[data.xls]sheet1!$A$1',
@@ -325,7 +338,7 @@ fancy_reference_inputs = [
     FormulaTest(
         '=IF(configurations!$G$22=3,sizing!$C$303,M14)',
         'configurations!$G$22|3|=|sizing!$C$303|M14|IF',
-        'x_if(_C_("configurations!G22") == 3, _C_("sizing!C303"), _C_("M14"))'),
+        'if_(_C_("configurations!G22") == 3, _C_("sizing!C303"), _C_("M14"))'),
     FormulaTest(
         '=TableX[[#This Row],[COL1]]&"-"&TableX[[#This Row],[COL2]]',
         'TableX[[#This Row],[COL1]]|"-"|&|TableX[[#This Row],[COL2]]|&',
@@ -351,24 +364,20 @@ linest_inputs = [
     FormulaTest(
         '=LINEST(X5:X32,W5:W32^{1,2,3})',
         'X5:X32|W5:W32|1|2|3|ARRAYROW|ARRAY|^|LINEST',
-        'linest(_R_("X5:X32"), _R_("W5:W32"), degree=-1)[-2]'),
+        'linest(_R_("X5:X32"), _R_("W5:W32") ** ((1, 2, 3,),))'),
     FormulaTest(
         '=LINEST(G2:G17,E2:E17,FALSE)',
         'G2:G17|E2:E17|FALSE|LINEST',
-        'linest(_R_("G2:G17"), _R_("E2:E17"), False, degree=-1)[-2]'),
+        'linest(_R_("G2:G17"), _R_("E2:E17"), False)'),
     FormulaTest(
         '=LINEST(B32:(INDEX(B32:B119,MATCH(0,B32:B119,-1),1)),(F32:(INDEX('
         'B32:F119,MATCH(0,B32:B119,-1),5)))^{1,2,3,4})',
         'B32|B32:B119|0|B32:B119|1|-|MATCH|1|INDEX||:|F32|B32:F119|0|'
         'B32:B119|1|-|MATCH|5|INDEX||:|1|2|3|4|ARRAYROW|ARRAY|^|LINEST',
-        'linest(_R_(str(_REF_("B32") | (index(_REF_("B32:B119"),'
-        ' match(0, _REF_("B32:B119"), -1), 1)))), (_R_(str(_REF_("F32") | '
-        '(index(_REF_("B32:F119"), match(0, _REF_("B32:B119"), -1), 5))))), '
-        'degree=-1)[-2]'),
-    FormulaTest(
-        '=LINESTMARIO(G2:G17,E2:E17,FALSE)',
-        'G2:G17|E2:E17|FALSE|LINESTMARIO',
-        'linestmario(_R_("G2:G17"), _R_("E2:E17"), False)[-2]'),
+        'linest(_R_(str(_REF_("B32") ** (index(_REF_("B32:B119"),'
+        ' match(0, _REF_("B32:B119"), -1), 1)))), (_R_(str(_REF_("F32") ** '
+        '(index(_REF_("B32:F119"), match(0, _REF_("B32:B119"), -1), 5))))) ** '
+        '((1, 2, 3, 4,),))'),
 ]
 
 reference_inputs = [
@@ -396,6 +405,14 @@ reference_inputs = [
         '=COLUMN(L45)',
         'L45|COLUMN',
         'column(_REF_("L45"))'),
+    FormulaTest(
+        '=OFFSET(L45,1,2,3,4)',
+        'L45|1|2|3|4|OFFSET',
+        'offset(_REF_("L45"), 1, 2, 3, 4)'),
+    FormulaTest(
+        '=OFFSET(L45:O50,1,2,,4)',
+        'L45:O50|1|2||4|OFFSET',
+        'offset(_REF_("L45:O50"), 1, 2, None, 4)'),
 ]
 
 
@@ -403,9 +420,9 @@ def dump_test_case(formula, python_code, rpn):
     escaped_python_code = python_code.replace('\\', r'\\')
 
     print('    FormulaTest(')
-    print("        '{}',".format(formula))
-    print("        '{}',".format(rpn))
-    print("        '{}'),".format(escaped_python_code))
+    print(f"        '{formula}',")
+    print(f"        '{rpn}',")
+    print(f"        '{escaped_python_code}'),")
 
 
 def dump_parse(to_dump, ATestCell):
@@ -434,13 +451,12 @@ test_names = (
 test_data = []
 for test_name in test_names:
     for i, test in enumerate(globals()[test_name]):
-        test_data.append(
-            ('{}_{}'.format(test_name, i + 1), test[0], test[1], test[2]))
+        test_data.append((f'{test_name}_{i + 1}', test[0], test[1], test[2]))
 
 
 def dump_all_test_cases():
     for name in test_names:
-        print('{} = '.format(name), end='')
+        print(f'{name} = ', end='')
         dump_parse(t.formula for t in globals()[name])
         print()
 
@@ -476,7 +492,7 @@ def test_parse(test_number, formula, rpn, python_code, ATestCell):
 
         print('--------------')
 
-    assert python_code == result_python_code
+    assert result_python_code == python_code
 
 
 def test_table_relative_address(ATestCell):
@@ -515,7 +531,7 @@ def test_multi_area_ranges(excel, ATestCell):
     with mock.patch.object(excel, '_defined_names', {
             'dname': (('$A$1', 's1'), ('$A$3:$A$4', 's2'))}):
         excel_formula = ExcelFormula('=sum(dname)', cell=cell)
-        assert excel_formula.ast.emit == 'xsum(_C_("s1!A1"), _R_("s2!A3:A4"))'
+        assert excel_formula.ast.emit == 'sum_(_C_("s1!A1"), _R_("s2!A3:A4"))'
 
 
 def test_str():
@@ -661,17 +677,6 @@ def test_save_to_file(fixture_dir):
     assert formula.python_code == loaded_formula.python_code
 
 
-def test_get_linest_degree_with_cell(ATestCell):
-    with mock.patch('pycel.excelformula.get_linest_degree') as get:
-        get.return_value = -1, -1
-
-        cell = ATestCell('A', 1, 'Phony Sheet')
-        formula = ExcelFormula('=linest(C1)', cell=cell)
-
-        expected = 'linest(_C_("Phony Sheet!C1"), degree=-1)[-2]'
-        assert expected == formula.python_code
-
-
 def test_init_from_python_code():
     excel_formula1 = ExcelFormula('=B32:B119 + P5')
     assert '_R_("B32:B119") + _C_("P5")' == \
@@ -735,13 +740,28 @@ def test_bool_funcs(formula, result):
 
 @pytest.mark.parametrize(
     'formula, result', (
-            ('=BITAND(1,2)', 0),
-            ('=BITOR(1,2)', 3),
-            ('=BITXOR(9, 5)', 12),
-            ('=BITLSHIFT(6, 1)', 12),
-            ('=BITRSHIFT(6, 1)', 3),
-            )
+        ('=IF(FALSE, 0, 1)', 1),
+        ('=IF(TRUE, 0, 1)', 0),
+        ('=IF(0>1, 0, 1)', 1),
+        ('=IF(1>0, 0, 1)', 0),
+        ('=IF(A1<0, 0, 1)', 1),
+        ('=IF(A1>0, 0, 1)', 0),
     )
+)
+def test_if_with_numpy(formula, result):
+    eval_ctx = ExcelFormula.build_eval_context(lambda x: np.int_(3.0), None)
+    assert eval_ctx(ExcelFormula(formula)) == result
+
+
+@pytest.mark.parametrize(
+    'formula, result', (
+        ('=BITAND(1,2)', 0),
+        ('=BITOR(1,2)', 3),
+        ('=BITXOR(9, 5)', 12),
+        ('=BITLSHIFT(6, 1)', 12),
+        ('=BITRSHIFT(6, 1)', 3),
+    )
+)
 def test_bit_funcs(formula, result):
     eval_ctx = ExcelFormula.build_eval_context(lambda x: None, None)
     assert eval_ctx(ExcelFormula(formula)) == result
@@ -870,12 +890,12 @@ def test_row(formula, result, cell, empty_eval_context, ATestCell):
         ('=subtotal(01,A1:B3)', 'average(_R_("A1:B3"))'),
         ('=subtotal(02,A1:B3)', 'count(_R_("A1:B3"))'),
         ('=subtotal(03,A1:B3)', 'counta(_R_("A1:B3"))'),
-        ('=subtotal(04,A1:B3)', 'xmax(_R_("A1:B3"))'),
-        ('=subtotal(05,A1:B3)', 'xmin(_R_("A1:B3"))'),
+        ('=subtotal(04,A1:B3)', 'max_(_R_("A1:B3"))'),
+        ('=subtotal(05,A1:B3)', 'min_(_R_("A1:B3"))'),
         ('=subtotal(06,A1:B3)', 'product(_R_("A1:B3"))'),
         ('=subtotal(07,A1:B3)', 'stdev(_R_("A1:B3"))'),
         ('=subtotal(08,A1:B3)', 'stdevp(_R_("A1:B3"))'),
-        ('=subtotal(09,A1:B3)', 'xsum(_R_("A1:B3"))'),
+        ('=subtotal(09,A1:B3)', 'sum_(_R_("A1:B3"))'),
         ('=subtotal(10,A1:B3)', 'var(_R_("A1:B3"))'),
         ('=subtotal(11,A1:B3)', 'varp(_R_("A1:B3"))'),
     )

@@ -21,9 +21,8 @@ from unittest import mock
 from openpyxl import load_workbook, Workbook
 from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.formula.translate import Translator
-from openpyxl.utils import datetime as opxl_dt
 
-from pycel.excelutil import AddressCell, AddressRange, flatten
+from pycel.excelutil import AddressCell, AddressRange, flatten, is_address
 
 ARRAY_FORMULA_NAME = '=CSE_INDEX'
 ARRAY_FORMULA_FORMAT = '{}(%s,%s,%s,%s,%s)'.format(ARRAY_FORMULA_NAME)
@@ -47,7 +46,7 @@ class ExcelWrapper:
         """"""
 
     def get_formula_from_range(self, address):
-        if not isinstance(address, (AddressRange, AddressCell)):
+        if not is_address(address):
             address = AddressRange(address)
         result = self.get_range(address)
         if isinstance(address, AddressCell):
@@ -58,7 +57,7 @@ class ExcelWrapper:
             ) for row in result.resolve_range)
 
     def get_formula_or_value(self, address):
-        if not isinstance(address, (AddressRange, AddressCell)):
+        if not is_address(address):
             address = AddressRange(address)
         result = self.get_range(address)
         if isinstance(address, AddressCell):
@@ -105,7 +104,7 @@ class _OpxRange(ExcelWrapper.RangeData):
 
             elif formula.startswith('={') and formula[-1] == '}':
                 # This is not in a CSE Array Context
-                return '=index({},1,1)'.format(formula[1:])
+                return f'=index({formula[1:]},1,1)'
 
             elif formula.startswith(ARRAY_FORMULA_NAME):
                 # These are CSE Array formulas as encoded from sheet
@@ -117,8 +116,7 @@ class _OpxRange(ExcelWrapper.RangeData):
                 cse_range = AddressRange(
                     (start_col_idx, start_row, end_col_idx, end_row),
                     sheet=cell.parent.title)
-                return '=index({},{},{})'.format(
-                    cse_range.quoted_address, *params[1:3])
+                return f'=index({cse_range.quoted_address},{params[1]},{params[2]})'
             else:
                 return formula
 
@@ -191,7 +189,7 @@ class ExcelOpxWrapper(ExcelWrapper):
                 'TableAndSheet', 'table, sheet_name')
             self._tables = {
                 t.name.lower(): TableAndSheet(t, ws.title)
-                for ws in self.workbook for t in ws._tables.values()}
+                for ws in self.workbook for t in self._worksheet_tables(ws)}
             self._tables[None] = TableAndSheet(None, None)
         return self._tables.get(table_name.lower(), self._tables[None])
 
@@ -199,12 +197,20 @@ class ExcelOpxWrapper(ExcelWrapper):
         """ Return the table name containing the address given """
         address = AddressCell(address)
         if address not in self._table_refs:
-            for t in self.workbook[address.sheet]._tables.values():
+            for t in self._worksheet_tables(self.workbook[address.sheet]):
                 if address in AddressRange(t.ref):
                     self._table_refs[address] = t.name.lower()
                     break
 
         return self._table_refs.get(address)
+
+    def _worksheet_tables(self, ws):  # pragma: no cover
+        """::HACK:: workaround for unsupported tables access in openpyxl < 3.0.4"""
+        try:
+            return ws.tables.values()
+        except AttributeError:
+            # hack for openpyxl versions < 3.0.4
+            return ws._tables
 
     def conditional_format(self, address):
         """ Return the conditional formats applicable for this cell """
@@ -218,8 +224,7 @@ class ExcelOpxWrapper(ExcelWrapper):
             col_offset = address.col_idx - origin.col_idx
             for rule in cf.rules:
                 if rule.formula:
-                    trans = Translator(
-                        '={}'.format(rule.formula[0]), origin.coordinate)
+                    trans = Translator(f'={rule.formula[0]}', origin.coordinate)
                     formula = trans.translate_formula(
                         row_delta=row_offset, col_delta=col_offset)
                     rules.append(self.CfRule(
@@ -242,6 +247,40 @@ class ExcelOpxWrapper(ExcelWrapper):
 
     def load_array_formulas(self):
         # expand array formulas
+        for ws in self.workbook:
+            if not hasattr(ws, 'array_formulae'):  # pragma: no cover
+                # array_formulae was introduced in openpyxl 3.0.8 & removed in 3.0.9
+                # https://foss.heptapod.net/openpyxl/openpyxl/-/
+                #   commit/b71b6ba667e9fcf8de3f899382d446626e55970c
+                # ... evidently will be coming back in 3.1
+                # https://openpyxl.readthedocs.io/en/stable/changes.html
+                self.old_load_array_formulas()
+                return
+
+            for address, ref_addr in ws.array_formulae.items():  # pragma: no cover
+                # get the reference address for the array formula
+                ref_addr = AddressRange(ref_addr)
+                if not isinstance(ref_addr, AddressRange):
+                    ref_addr = AddressRange(ref_addr)
+
+                if isinstance(ref_addr, AddressRange):
+                    formula = ws[address].value
+                    for i, row in enumerate(ref_addr.rows, start=1):
+                        for j, addr in enumerate(row, start=1):
+                            ws[addr.coordinate] = ARRAY_FORMULA_FORMAT % (
+                                formula.text[1:], i, j, *ref_addr.size)
+                else:
+                    # ::TODO:: At some point consider dropping support for openpyxl < 3.0.8
+                    # This has the effect of replacing the ArrayFormula object with just the
+                    # formula text. This matches the openpyxl < 3.0.8 behavior, at some point
+                    # consider using the new behavior.
+                    ws[ref_addr.coordinate] = ws[ref_addr.coordinate].value.text
+
+    def old_load_array_formulas(self):  # pragma: no cover
+        """expand array formulas"""
+        # formula_attributes was dropped in openpyxl 3.0.8
+        # https://foss.heptapod.net/openpyxl/openpyxl/-/
+        #   commit/b71b6ba667e9fcf8de3f899382d446626e55970c
         for ws in self.workbook:
             for address, props in ws.formula_attributes.items():
                 if props.get('t') != 'array':
@@ -272,7 +311,7 @@ class ExcelOpxWrapper(ExcelWrapper):
         return value
 
     def get_range(self, address):
-        if not isinstance(address, (AddressRange, AddressCell)):
+        if not is_address(address):
             address = AddressRange(address)
 
         if address.has_sheet:

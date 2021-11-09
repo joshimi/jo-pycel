@@ -54,11 +54,10 @@ My development is driven by the particular spreadsheets I need to handle so
 I have only added support for functions that I need.  However, it is should be
 straightforward to add support for others.
 
-The code does currently not support cell references so a function like OFFSET
-would take some more work to implement.  Not inherently difficult, its just
-that I have had no need for references yet.  Also, for obvious reasons, any
-VBA code is not compiled but needs to be re-implemented manually on the
-python side.
+The code does currently support cell references so a function like OFFSET works,
+but suffers from the fact that if a cell is not already compiled in, then the
+function can fail.  Also, for obvious reasons, any VBA code is not compiled
+but needs to be re-implemented manually on the python side.
 
 **The Ugly:**
 
@@ -84,16 +83,16 @@ by Robin Macharg.
 
 The code currently uses a tokenizer of similar origin from the
 `openpyxl library.
-<https://bitbucket.org/openpyxl/openpyxl/src/default/openpyxl/formula/>`_
+<https://foss.heptapod.net/openpyxl/openpyxl/-/tree/branch/default/openpyxl/formula/>`_
 
 .. Image links
 
-.. |build-state| image:: https://travis-ci.org/stephenrauch/pycel.svg?branch=master
-  :target: https://travis-ci.org/stephenrauch/pycel
+.. |build-state| image:: https://travis-ci.com/dgorissen/pycel.svg?branch=master
+  :target: https://travis-ci.com/dgorissen/pycel
   :alt: Build Status
 
-.. |coverage| image:: https://codecov.io/gh/stephenrauch/pycel/branch/master/graph/badge.svg
-  :target: https://codecov.io/gh/stephenrauch/pycel/list/master
+.. |coverage| image:: https://codecov.io/gh/dgorissen/pycel/branch/master/graph/badge.svg
+  :target: https://codecov.io/gh/dgorissen/pycel/list/master
   :alt: Code Coverage
 
 .. |pypi| image:: https://img.shields.io/pypi/v/pycel.svg
@@ -107,14 +106,14 @@ The code currently uses a tokenizer of similar origin from the
   :target: https://requires.io/github/stephenrauch/pycel/requirements/?branch=master
   :alt: Requirements Status
 
-.. |repo-size| image:: https://img.shields.io/github/repo-size/stephenrauch/pycel.svg
-  :target: https://github.com/stephenrauch/pycel
+.. |repo-size| image:: https://img.shields.io/github/repo-size/dgorissen/pycel.svg
+  :target: https://github.com/dgorissen/pycel
   :alt: Repo Size
 
-.. |code-size| image:: https://img.shields.io/github/languages/code-size/stephenrauch/pycel.svg
-  :target: https://github.com/stephenrauch/pycel
+.. |code-size| image:: https://img.shields.io/github/languages/code-size/dgorissen/pycel.svg
+  :target: https://github.com/dgorissen/pycel
   :alt: Code Size
 
 .. |notebook| image:: https://mybinder.org/badge.svg
-  :target: https://mybinder.org/v2/gh/stephenrauch/pycel/master?filepath=notebooks%2Fexample.ipynb
+  :target: https://mybinder.org/v2/gh/dgorissen/pycel/master?filepath=notebooks%2Fexample.ipynb
   :alt: Open Notebook
