@@ -53,6 +53,7 @@ def test_cse_array_wrapper(arg_num, f_args, result):
 
 @pytest.mark.parametrize(
     'arg_nums, f_args, result', (
+        (((0, 1, 2, 3)), ((0, NUM_ERROR), (DIV0, NUM_ERROR)), NUM_ERROR),
         ((0, 1), (DIV0, 1), DIV0),
         ((0, 1), (1, DIV0), DIV0),
         ((0, 1), (NUM_ERROR, DIV0), NUM_ERROR),
@@ -64,7 +65,7 @@ def test_cse_array_wrapper(arg_num, f_args, result):
 def test_error_string_wrapper(arg_nums, f_args, result):
 
     def f_test(*args):
-        return 'args: {}'.format(args)
+        return f'args: {args}'
 
     assert error_string_wrapper(f_test, arg_nums)(*f_args) == result
 
@@ -102,8 +103,8 @@ def test_ref_wrap(value, result):
         return args
 
     name_space = locals()
-    name_space['_R_'] = lambda a: 'R:{}'.format(a)
-    name_space['_C_'] = lambda a: 'C:{}'.format(a)
+    name_space['_R_'] = lambda a: f'R:{a}'
+    name_space['_C_'] = lambda a: f'C:{a}'
 
     func = apply_meta(
         excel_helper(ref_params=1)(r_test), name_space=name_space)[0]
@@ -120,6 +121,16 @@ def test_apply_meta_nothing_active():
     assert func == a_test_func
 
 
+def test_apply_meta_kwargs():
+
+    def a_test_func(**x):
+        pass
+
+    with pytest.raises(RuntimeError,
+                       match=r'Function a_test_func: \*\*kwargs not allowed in signature'):
+        apply_meta(excel_helper()(a_test_func))
+
+
 def test_load_functions():
 
     modules = (
@@ -131,13 +142,13 @@ def test_load_functions():
 
     namespace = locals()
 
-    names = 'degrees x_if junk'.split()
+    names = 'degrees if_ junk'.split()
     missing = load_functions(names, namespace, modules)
     assert missing == {'junk'}
     assert 'degrees' in namespace
-    assert 'x_if' in namespace
+    assert 'if_' in namespace
 
-    names = 'radians x_if junk'.split()
+    names = 'radians if_ junk'.split()
     missing = load_functions(names, namespace, modules)
     assert missing == {'junk'}
     assert 'radians' in namespace
@@ -145,8 +156,8 @@ def test_load_functions():
     assert namespace['radians'](180) == math.pi
     assert namespace['radians'](((180, 360),)) == ((math.pi, 2 * math.pi),)
 
-    assert namespace['x_if'](0, 'Y', 'N') == 'N'
-    assert namespace['x_if'](((0, 1),), 'Y', 'N') == (('N', 'Y'),)
+    assert namespace['if_'](0, 'Y', 'N') == 'N'
+    assert namespace['if_'](((0, 1),), 'Y', 'N') == (('N', 'Y'),)
 
     missing = load_functions(['log'], namespace, modules)
     assert not missing

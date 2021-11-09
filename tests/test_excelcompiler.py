@@ -7,17 +7,22 @@
 # You may obtain a copy of the Licence at:
 #   https://www.gnu.org/licenses/gpl-3.0.en.html
 
+import copy
 import json
+import math
 import os
+import random
 import shutil
+from pathlib import Path
 from unittest import mock
 
+import numpy as np
 import pytest
 from openpyxl import Workbook
 from openpyxl.workbook.defined_name import DefinedName
 from ruamel.yaml import YAML
 
-from pycel.excelcompiler import _Cell, _CellRange, ExcelCompiler
+from pycel.excelcompiler import _Cell, _CellRange, ExcelCompiler, Mismatch
 from pycel.excelformula import FormulaParserError, UnknownFunction
 from pycel.excelutil import (
     AddressCell,
@@ -58,31 +63,25 @@ def test_no_sheet_given(excel_compiler):
     assert sh1_value != value
 
 
-def test_round_trip_through_json_yaml_and_pickle(
-        excel_compiler, fixture_xls_path):
+@pytest.mark.parametrize('file_type', ('pickle', 'yaml', 'json'))
+def test_round_trip_through_json_yaml_and_pickle(excel_compiler, fixture_xls_path, file_type):
+    extra_data = {1: 3}
+    plugins = ('pycel.excellib', )
     excel_compiler.evaluate('Sheet1!D1')
-    excel_compiler.extra_data = {1: 3}
-    excel_compiler.to_file(file_types=('pickle', ))
-    excel_compiler.to_file(file_types=('yml', ))
-    excel_compiler.to_file(file_types=('json', ))
+    excel_compiler.extra_data = extra_data
 
-    # read the spreadsheet from json, yaml and pickle
-    excel_compiler_json = ExcelCompiler.from_file(
-        excel_compiler.filename + '.json')
-    excel_compiler_yaml = ExcelCompiler.from_file(
-        excel_compiler.filename + '.yml')
-    excel_compiler = ExcelCompiler.from_file(excel_compiler.filename)
+    excel_compiler.to_file(file_types=(file_type, ))
+
+    # read the spreadsheet from {file_type}
+    extension = f'.{file_type}' if file_type != 'pickle' else ''
+    excel_compiler = ExcelCompiler.from_file(excel_compiler.filename + extension, plugins=plugins)
+
+    # test compiler data
+    assert excel_compiler.extra_data.keys() & extra_data.keys()
+    assert excel_compiler._plugin_modules == plugins
 
     # test evaluation
-    assert -0.02286 == round(excel_compiler_json.evaluate('Sheet1!D1'), 5)
-    assert -0.02286 == round(excel_compiler_yaml.evaluate('Sheet1!D1'), 5)
     assert -0.02286 == round(excel_compiler.evaluate('Sheet1!D1'), 5)
-
-    excel_compiler_json.set_value('Sheet1!A1', 200)
-    assert -0.00331 == round(excel_compiler_json.evaluate('Sheet1!D1'), 5)
-
-    excel_compiler_yaml.set_value('Sheet1!A1', 200)
-    assert -0.00331 == round(excel_compiler_yaml.evaluate('Sheet1!D1'), 5)
 
     excel_compiler.set_value('Sheet1!A1', 200)
     assert -0.00331 == round(excel_compiler.evaluate('Sheet1!D1'), 5)
@@ -116,7 +115,7 @@ def test_deserialize_filename(
         # When the serialization path is different than the workbook path
         (serialization_override_path, excel_compiler.filename),
         # When the serialization path is the same as the workbook
-        ('{}.yml'.format(excel_compiler.filename), excel_compiler.filename),
+        (f'{excel_compiler.filename}.yml', excel_compiler.filename),
     ):
         excel_compiler._to_text(serialization_filename)
         deserialized = excel_compiler._from_text(serialization_filename)
@@ -354,16 +353,32 @@ def test_evaluate_from_non_cells(excel_compiler):
     assert old_values[0] == range_value
 
 
-def test_validate_calcs(excel_compiler, capsys):
+def test_validate_serialized(excel_compiler, capsys):
     input_addrs = ['trim-range!D5']
     output_addrs = ['trim-range!B2']
 
     excel_compiler.trim_graph(input_addrs, output_addrs)
-    excel_compiler.cell_map[output_addrs[0]].value = 'JUNK'
-    failed_cells = excel_compiler.validate_calcs(output_addrs)
+    failed_cells = excel_compiler.validate_serialized(output_addrs=output_addrs)
+    assert failed_cells == {}
 
-    assert {'mismatch': {
-        'trim-range!B2': ('JUNK', 136, '=B1+SUM(D4:E4)+D5')}} == failed_cells
+    # test error reporting in compiled sheet
+    file_name = Path(excel_compiler.filename)
+    loaded_name = str(file_name.parent / f'xyzzy-{file_name.name}.json')
+
+    excel_compiler.to_file(loaded_name)
+    loaded = excel_compiler.from_file(loaded_name)
+    loaded.cell_map[input_addrs[0]].value = 200
+    with mock.patch('pycel.excelcompiler.ExcelCompiler.from_file', return_value=loaded):
+        failed_cells = excel_compiler.validate_serialized(output_addrs=output_addrs)
+
+    assert failed_cells == {
+        'trim-range!B2': Mismatch(original=136, calced=236, formula='=B1+SUM(D4:E4)+D5'),
+        'trim-range!D5': Mismatch(original=100, calced=200, formula='None')
+    }
+
+    excel_compiler.cell_map[output_addrs[0]].value = 'JUNK'
+    failed_cells = excel_compiler.validate_serialized(output_addrs=output_addrs)
+    assert failed_cells == {'mismatch': {'trim-range!B2': ('JUNK', 136, '=B1+SUM(D4:E4)+D5')}}
 
     out, err = capsys.readouterr()
     assert '' == err
@@ -490,7 +505,9 @@ def test_evaluate_conditional_formatting(cond_format_ws):
     ]
     formats = cond_format_ws.eval_conditional_formats(cells_addrs)
     formats2 = cond_format_ws.eval_conditional_formats((a for a in cells_addrs))
-    assert formats == list(formats2)
+    assert formats == list(formats2)  # should match cells_addrs's type
+    assert formats2 == tuple(formats2)  # tuple since cells_addrs is a generator
+    assert isinstance(formats[0], tuple)
     assert len(formats) == 3
     assert len(formats[2]) == 3
 
@@ -748,6 +765,47 @@ def test_validate_count():
     assert excel_compiler.evaluate('Sheet!B1:B4') == (1, 2, 3, 3)
 
 
+def test_obsolete_function_mappings(fixture_dir):
+    """Verify that we are mapping the previous mapping to new function names
+
+    # Older mappings for excel functions that match Python built-in and keywords
+    old_map = {
+        "abs": "x_abs",
+        "and": "x_and",
+        "atan2": "xatan2",
+        "if": "x_if",
+        "int": "x_int",
+        "len": "x_len",
+        "max": "xmax",
+        "not": "x_not",
+        "or": "x_or",
+        "min": "xmin",
+        "round": "x_round",
+        "sum": "xsum",
+        "xor": "x_xor",
+    }
+    """
+    excel_compiler = ExcelCompiler.from_file(
+        os.path.join(fixture_dir, 'fixture.xlsx.yml'))
+
+    result = [excel_compiler.evaluate(f'Sheet2!A{i}') for i in range(1, 14)]
+    assert result == [
+        abs(-1),
+        True,
+        math.atan2(1, 1),
+        2,
+        int(1.23),
+        len("Plugh"),
+        max(2, 3),
+        not True,
+        True or False,
+        min(2, 3),
+        round(2.34),
+        sum((1, 2)),
+        True ^ True,
+    ]
+
+
 @pytest.mark.parametrize(
     'msg, formula', (
         ("Function XYZZY is not implemented. "
@@ -798,6 +856,9 @@ def test_evaluate_exceptions(fixture_dir):
     assert 'exceptions' in result
     assert len(result['exceptions']) == 1
 
+    with pytest.raises(FormulaParserError):
+        excel_compiler.validate_calcs(address, raise_exceptions=True)
+
 
 def test_evaluate_empty_intersection(fixture_dir):
     excel_compiler = ExcelCompiler.from_file(
@@ -809,6 +870,32 @@ def test_evaluate_empty_intersection(fixture_dir):
         excel_compiler.excel
     )
     assert excel_compiler.evaluate(address) == NULL_ERROR
+
+
+def test_evaluate_not_pre_existing_range(fixture_dir):
+    excel_compiler = ExcelCompiler.from_file(
+        os.path.join(fixture_dir, 'fixture.xlsx.yml'))
+
+    assert excel_compiler.evaluate('Sheet1!B5:B8') == (18, 21, 24, 27)
+
+
+def test_save_restore_numpy_float(basic_ws, tmpdir):
+    addr = AddressCell('Sheet1!A1')
+    cell_value = basic_ws.evaluate(addr)
+    assert not isinstance(cell_value, np.float64)
+
+    basic_ws.set_value(addr, np.float64(8.0))
+    cell_value = basic_ws.evaluate(addr)
+    assert isinstance(cell_value, np.float64)
+    assert cell_value == 8.0
+
+    tmp_name = os.path.join(tmpdir, 'numpy_test')
+    basic_ws.to_file(tmp_name)
+
+    excel_compiler = ExcelCompiler.from_file(tmp_name)
+    cell_value = excel_compiler.evaluate(addr)
+    assert not isinstance(cell_value, np.float64)
+    assert cell_value == 8.0
 
 
 def test_plugins(excel_compiler):
@@ -832,21 +919,56 @@ def test_plugins(excel_compiler):
             calc_and_check()
 
     with mock.patch('pycel.excelformula.ExcelFormula.default_modules', ()):
-        excel_compiler._plugin_modules = ('pycel.excellib', )
+        excel_compiler._plugin_modules = ('pycel.excellib', 'pycel.lib.stats')
         calc_and_check()
 
-    with mock.patch('pycel.excelformula.ExcelFormula.default_modules', ()):
-        excel_compiler._plugin_modules = 'pycel.excellib'
+    with mock.patch('pycel.excelformula.ExcelFormula.default_modules', ('pycel.excellib',)):
+        excel_compiler._plugin_modules = 'pycel.lib.stats'
         calc_and_check()
 
     with mock.patch('pycel.excelformula.ExcelFormula.default_modules',
-                    ('pycel.excellib', )):
+                    ('pycel.excellib', 'pycel.lib.stats')):
         excel_compiler._plugin_modules = None
         calc_and_check()
 
     with mock.patch('pycel.excelformula.ExcelFormula.default_modules', ()):
         with pytest.raises(UnknownFunction):
             calc_and_check()
+
+
+@pytest.mark.parametrize(
+    'a, b, rel, tol, expected', (
+        (0, 0, None, None, True),
+        (0, 1E-15, None, None, True),
+        (0, 1E-5, None, None, False),
+
+        (1, 1 + 1e-4, None, None, False),
+        (1, 1 + 1e-6, None, None, True),
+
+        (1, 1 + 1e-6, 1e-7, None, False),
+        (1, 1 + 1e-8, 1e-7, None, True),
+
+        (0.991, 1, None, 0.01, True),
+        (0.989, 1, None, 0.01, False),
+
+        ('a', 1, None, None, False),
+        ('1', 1, None, None, False),
+        ('1', None, None, None, False),
+        ('1', True, None, None, False),
+    )
+)
+def test_close_enough(a, b, rel, tol, expected):
+    cell = _Cell('A1', a)
+    kwargs = {'value': b}
+    if rel is not None:
+        kwargs['rel'] = rel
+    if tol is not None:
+        kwargs['rel'] = tol
+    assert cell.close_enough(**kwargs) == expected
+
+    cell.value = b
+    kwargs['value'] = a
+    assert cell.close_enough(**kwargs) == expected
 
 
 @pytest.mark.parametrize(
@@ -955,3 +1077,58 @@ def test_circular_mismatch_warning(
 
         ExcelCompiler(fixture_xls_path_circular, cycles=True)
         assert log.warning.call_count == 2
+
+
+def test_circular_disabled(fixture_xls_copy):
+    excel_compiler = ExcelCompiler(fixture_xls_copy('circular.xlsx'), cycles=False)
+
+    failed_cells = excel_compiler.validate_serialized()
+    assert failed_cells == {
+        'exceptions': {
+            'RecursionError: Do you need to use cycles=True ?': [
+                ('Sheet1!B10', '=IF(B3=0, 0, B10+0.001)',
+                 'Do you need to use cycles=True ?'
+                 )
+            ]
+        }
+    }
+
+
+def test_circular_order_random(fixture_xls_copy):
+    """This is hoping to find a way to reproduce #126"""
+    excel_compiler = ExcelCompiler(fixture_xls_copy('circular.xlsx'), cycles=True)
+    to_verify = list(excel_compiler.formula_cells())
+
+    randgen = random.Random(1234)
+
+    for i in range(100):
+        addrs = copy.copy(to_verify)
+        randgen.shuffle(addrs)
+        excel_compiler = ExcelCompiler(fixture_xls_copy('circular.xlsx'), cycles=True)
+        failed_cells = excel_compiler.validate_serialized(
+            tolerance=excel_compiler.cycles['tolerance'],
+            output_addrs=addrs,
+        )
+        assert (failed_cells, addrs) == ({}, addrs)
+
+
+def test_evaluate_after_range_eval_error():
+    wb = Workbook()
+    ws = wb.active
+    ws['A1'], ws['B1'], ws['C1'] = 0, 1, 0
+    ws['A2'] = '=UNKNOWN(A1:C1,0,FALSE,1,TRUE)'
+    ws.formula_attributes['A2'] = {'t': 'array', 'ref': "A2:C2"}
+    ws['A3'] = 'hello'
+    ws['A4'] = '=UNKNOWN(A1:C1,1,FALSE,0,TRUE)'
+    ws.formula_attributes['A4'] = {'t': 'array', 'ref': "A4:C4"}
+    ws['A5'] = '=AND(A2,A4)'
+
+    excel_compiler = ExcelCompiler(excel=wb)
+    with pytest.raises(UnknownFunction):
+        excel_compiler.evaluate('A2')
+    assert excel_compiler.evaluate('A3') == 'hello'
+
+    excel_compiler = ExcelCompiler(excel=wb)
+    with pytest.raises(UnknownFunction):
+        excel_compiler.evaluate('A5')
+    assert excel_compiler.evaluate('A3') == 'hello'

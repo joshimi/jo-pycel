@@ -30,7 +30,7 @@ def ATestCell():
             self.col_idx = column_index_from_string(col)
             self.sheet = sheet
             self.excel = excel
-            self.address = AddressCell('{}{}'.format(col, row), sheet=sheet)
+            self.address = AddressCell(f'{col}{row}', sheet=sheet)
             self.value = value
 
     return ATestCell
@@ -89,7 +89,7 @@ def unconnected_excel(fixture_xls_path):
         yield ExcelWrapperImpl(fixture_xls_path)
 
 
-@pytest.fixture()
+@pytest.fixture
 def excel(unconnected_excel):
     unconnected_excel.load()
     return unconnected_excel

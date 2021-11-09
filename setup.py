@@ -25,12 +25,21 @@ from setuptools import find_packages, setup
 exec(open('src/pycel/version.py').read())
 
 
-# Create long description from README.rst and docs/source/CHANGES.rst.
+# Create long description from README.rst and CHANGES.rst.
 # PYPI page will contain complete changelog.
-long_description = u'{}\n\n\nChange Log\n==========\n\n\n{}'.format(
-    open('README.rst', 'r', encoding='utf-8').read(),
-    open('CHANGES.rst', 'r', encoding='utf-8').read()
-)
+def changes():
+    """get changes.rst and remove the keep-a-changelog header"""
+    import itertools as it
+    import re
+
+    lines = tuple(open('CHANGES.rst', 'r', encoding='utf-8').readlines())
+    first_change_re = re.compile(r'^\[\d')
+    header = tuple(it.takewhile(lambda line: not first_change_re.match(line), lines))
+    return lines[len(header):]
+
+
+long_description = u'{}\n\nChange Log\n==========\n\n{}'.format(
+    open('README.rst', 'r', encoding='utf-8').read(), ''.join(changes()))
 
 with open('test-requirements.txt') as f:
     tests_require = f.readlines()
@@ -38,7 +47,7 @@ with open('test-requirements.txt') as f:
 
 setup(
     name='pycel',
-    version='1.0.7',
+    version='1.0.8',
     packages=find_packages('src'),
     package_dir={'': 'src'},
     description='A library for compiling excel spreadsheets to python code '
@@ -74,6 +83,7 @@ setup(
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
 )

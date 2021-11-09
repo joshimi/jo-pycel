@@ -20,6 +20,8 @@ from pycel.excelutil import (
     build_wildcard_re,
     ERROR_CODES,
     ExcelCmp,
+    flatten,
+    is_address,
     list_like,
     MAX_COL,
     MAX_ROW,
@@ -32,8 +34,37 @@ from pycel.lib.function_helpers import (
 )
 
 
+""" Functions consuming or producing references.
+INDEX() - Takes an array or reference, returns the value pointed to
+OFFSET()  - Takes a reference, returns a reference
+INDIRECT() - Returns the reference specified by a text string.
+ROW() - Takes a reference, returns row number
+COLUMN() - Takes a reference, returns column number
+
+All of these can cause problems when compiling the workbook.
+
+OFFSET() and INDIRECT() should generally be avoided, as they can cause
+performance problems in any large spreadsheet.  That is because the
+outputs are volatile.  When compiling, this means they are not necessarily
+known when the sheet is compiled.  In general use INDEX() instead of
+OFFSET(), and don't use INDIRECT() at all, if needing to compile the workbook.
+
+As a general reminder, all of these functions are volatile and can
+cause performance problems in large spreadsheets because of frequent
+need to recalc.
+
+OFFSET()
+INDIRECT()
+ROWS()
+COLUMNS()
+CELL()
+NOW()
+TODAY()
+"""
+
+
 def _match(lookup_value, lookup_array, match_type=1):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   MATCH-function-E8DFFD45-C762-47D6-BF89-533F4A37673A
 
     """ The relative position of a specified item in a range of cells.
@@ -62,13 +93,19 @@ def _match(lookup_value, lookup_array, match_type=1):
     if match_type == 1:
         # Use a binary search to speed it up.  Excel seems to do this as it
         # would explain the results seen when doing out of order searches.
-        lookup_value = ExcelCmp(lookup_value)
+        lo = 0
+        while lo < len(lookup_array) and lookup_array[lo] is None:
+            lo += 1
 
-        result = bisect_right(lookup_array, lookup_value)
+        hi = len(lookup_array)
+        while hi > 0 and lookup_array[hi - 1] is None:
+            hi -= 1
+
+        result = bisect_right(lookup_array, lookup_value, lo=lo, hi=hi)
         while result and lookup_value.cmp_type != ExcelCmp(
                 lookup_array[result - 1]).cmp_type:
             result -= 1
-        if result == 0:
+        if result == 0 or lookup_array[result - 1] is None:
             result = NA_ERROR
         return result
 
@@ -105,23 +142,28 @@ def _match(lookup_value, lookup_array, match_type=1):
 
 
 # def address(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   address-function-d0c26c0d-3991-446b-8de4-ab46431d4f89
 
 
 # def areas(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   areas-function-8392ba32-7a41-43b3-96b0-3695d2ec6152
 
 
-# def choose(value):
-    # Excel reference: https://support.office.com/en-us/article/
+@excel_helper(cse_params=0, number_params=0, err_str_params=0)
+def choose(index, *args):
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   choose-function-fc5c184f-cb62-4ec7-a46e-38653b98f5bc
+    index = int(index)
+    if index < 1 or len(args) < index or not args:
+        return VALUE_ERROR
+    return args[index - 1]
 
 
 @excel_helper(ref_params=0)
 def column(ref):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   COLUMN-function-44E8C754-711C-4DF3-9DA4-47A55042554B
     if ref.is_range:
         if ref.end.col_idx == 0:
@@ -133,26 +175,26 @@ def column(ref):
 
 
 # def columns(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   columns-function-4e8e7b4e-e603-43e8-b177-956088fa48ca
 
 
 # def filter(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   filter-function-f4f7cb66-82eb-4767-8f7c-4877ad80c759
 
 
 # def formulatext(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   formulatext-function-0a786771-54fd-4ae2-96ee-09cda35439c8
 
 
 # def getpivotdata(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   getpivotdata-function-8c083b99-a922-4ca0-af5e-3af55960761f
 
 
-@excel_helper(cse_params=0, bool_params=3, number_params=2)
+@excel_helper(cse_params=0, bool_params=3, number_params=2, err_str_params=(0, 2, 3))
 def hlookup(lookup_value, table_array, row_index_num, range_lookup=True):
     """ Horizontal Lookup
 
@@ -162,7 +204,7 @@ def hlookup(lookup_value, table_array, row_index_num, range_lookup=True):
     :param range_lookup: True, assumes sorted, finds nearest. False: find exact
     :return: #N/A if not found else value
     """
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   hlookup-function-a3034eec-b719-4ba3-bb65-e1ad662ed95f
 
     if not list_like(table_array):
@@ -185,54 +227,80 @@ def hlookup(lookup_value, table_array, row_index_num, range_lookup=True):
 
 
 # def hyperlink(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   hyperlink-function-333c7ce6-c5ae-4164-9c47-7de9b76f577f
 
 
-@excel_helper(number_params=(1, 2))
+@excel_helper(err_str_params=(1, 2), number_params=(1, 2))
 def index(array, row_num, col_num=None):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   index-function-a5dcf0dd-996d-40a4-a822-b56b061328bd
 
-    if not list_like(array) or not list_like(array[0]):
+    if not list_like(array):
+        if array in ERROR_CODES:
+            return array
+        else:
+            return VALUE_ERROR
+    if not list_like(array[0]):
         return VALUE_ERROR
+
+    if is_address(array[0][0]):
+        assert len({a for a in flatten(array)}) == 1
+        _C_ = index.excel_func_meta['name_space']['_C_']
+        ref_addr = array[0][0].address_at_offset
+    else:
+        ref_addr = None
+
+    def array_data(row, col):
+        if ref_addr:
+            return _C_(ref_addr(row, col).address)
+        else:
+            return array[row][col]
 
     try:
         # rectangular array
         if row_num and col_num:
-            return array[row_num - 1][col_num - 1]
+            if row_num < 0 or col_num < 0:
+                return VALUE_ERROR
+            else:
+                return array_data(row_num - 1, col_num - 1)
 
         elif row_num:
-            if len(array[0]) == 1:
-                return array[row_num - 1][0]
+            if row_num < 0:
+                return VALUE_ERROR
+            elif len(array[0]) == 1:
+                return array_data(row_num - 1, 0)
             elif len(array) == 1:
-                return array[0][row_num - 1]
+                return array_data(0, row_num - 1)
             elif isinstance(array, np.ndarray):
                 return array[row_num - 1, :]
             else:
-                return (tuple(array[row_num - 1]),)
+                return (tuple(array_data(row_num - 1, col) for col in range(len(array[0]))),)
 
         elif col_num:
-            if len(array) == 1:
-                return array[0][col_num - 1]
+            if col_num < 0:
+                return VALUE_ERROR
+            elif len(array) == 1:
+                return array_data(0, col_num - 1)
             elif len(array[0]) == 1:
-                return array[col_num - 1][0]
+                return array_data(col_num - 1, 0)
             elif isinstance(array, np.ndarray):
                 result = array[:, col_num - 1]
                 result.shape = result.shape + (1,)
                 return result
             else:
-                return tuple((r[col_num - 1], ) for r in array)
+                return tuple((array_data(row, col_num - 1), ) for row in range(len(array)))
 
     except IndexError:
-        pass
+        return REF_ERROR
 
-    return NA_ERROR
+    else:
+        return array
 
 
 @excel_helper(cse_params=0, number_params=1)
 def indirect(ref_text, a1=True, sheet=''):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   indirect-function-474b3a3a-8a26-4f44-b491-92b6306fa261
     try:
         address = AddressRange.create(ref_text)
@@ -245,7 +313,7 @@ def indirect(ref_text, a1=True, sheet=''):
     return address
 
 
-@excel_helper(cse_params=0)
+@excel_helper(cse_params=0, err_str_params=0)
 def lookup(lookup_value, lookup_array, result_range=None):
     """
     There are two ways to use LOOKUP: Vector form and Array form
@@ -263,7 +331,7 @@ def lookup(lookup_value, lookup_array, result_range=None):
     :param result_range: (optional vector form) values are returned from here
     :return: #N/A if not found else value
     """
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   lookup-function-446d94af-663b-451d-8251-369d5e3864cb
     if not list_like(lookup_array):
         return NA_ERROR
@@ -279,14 +347,20 @@ def lookup(lookup_value, lookup_array, result_range=None):
         match_idx = _match(lookup_value, lookup_array[0])
         result = lookup_array[-1]
 
-    if len(lookup_array) > 1 and len(lookup_array[0]) > 1:
-        # rectangular array
-        assert result_range is None
+    if result_range is not None:
+        # if not a vector return NA
+        if not list_like(result_range):
+            return NA_ERROR
+        rr_height = len(result_range)
+        rr_width = len(result_range[0])
 
-    elif result_range:
-        if len(result_range) > len(result_range[0]):
+        if rr_width < rr_height:
+            if rr_width != 1:
+                return NA_ERROR
             result = tuple(i[0] for i in result_range)
         else:
+            if rr_height != 1:
+                return NA_ERROR
             result = result_range[0]
 
     if isinstance(match_idx, int):
@@ -297,9 +371,9 @@ def lookup(lookup_value, lookup_array, result_range=None):
         return match_idx
 
 
-@excel_helper(cse_params=0, number_params=2)
+@excel_helper(cse_params=0, number_params=2, err_str_params=(0, 2))
 def match(lookup_value, lookup_array, match_type=1):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   match-function-e8dffd45-c762-47d6-bf89-533f4a37673a
     if len(lookup_array) == 1:
         lookup_array = lookup_array[0]
@@ -309,9 +383,9 @@ def match(lookup_value, lookup_array, match_type=1):
     return _match(lookup_value, lookup_array, match_type)
 
 
-@excel_helper(cse_params=-1, ref_params=0, number_params=(1, 2))
+@excel_helper(cse_params=(1, 2, 3, 4), ref_params=0, number_params=(1, 2))
 def offset(reference, row_inc, col_inc, height=None, width=None):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   offset-function-c8de19ae-dd79-4b9b-a14e-b4d906d11b66
     """
     Returns a reference to a range that is a specified number of rows and
@@ -340,14 +414,13 @@ def offset(reference, row_inc, col_inc, height=None, width=None):
         bottom_right = AddressCell((end_col, end_row, end_col, end_row),
                                    sheet=base_addr.sheet)
 
-        return AddressRange('{}:{}'.format(
-            top_left.coordinate, bottom_right.coordinate),
-            sheet=top_left.sheet)
+        return AddressRange(f'{top_left.coordinate}:{bottom_right.coordinate}',
+                            sheet=top_left.sheet)
 
 
 @excel_helper(ref_params=0)
 def row(ref):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   row-function-3a63b74a-c4d0-4093-b49a-e76eb49a6d8d
     if ref.is_range:
         if ref.end.row == 0:
@@ -359,41 +432,41 @@ def row(ref):
 
 
 # def rows(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   rows-function-b592593e-3fc2-47f2-bec1-bda493811597
 
 
 # def rtd(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   rtd-function-e0cc001a-56f0-470a-9b19-9455dc0eb593
 
 
 # def single(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   single-function-7ca229ca-13ae-420b-928e-2ef52a3805ff
 
 
 # def sort(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   sort-function-22f63bd0-ccc8-492f-953d-c20e8e44b86c
 
 
 # def sortby(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   sortby-function-cd2d7a62-1b93-435c-b561-d6a35134f28f
 
 
 # def transpose(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   transpose-function-ed039415-ed8a-4a81-93e9-4b6dfac76027
 
 
 # def unique(value):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   unique-function-c5ab87fd-30a3-4ce9-9d1a-40204fb85e1e
 
 
-@excel_helper(cse_params=0, bool_params=3, number_params=2)
+@excel_helper(cse_params=0, bool_params=3, number_params=2, err_str_params=(0, 2, 3))
 def vlookup(lookup_value, table_array, col_index_num, range_lookup=True):
     """ Vertical Lookup
 
@@ -403,7 +476,7 @@ def vlookup(lookup_value, table_array, col_index_num, range_lookup=True):
     :param range_lookup: True, assumes sorted, finds nearest. False: find exact
     :return: #N/A if not found else value
     """
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   VLOOKUP-function-0BBC8083-26FE-4963-8AB8-93A18AD188A1
 
     if not list_like(table_array):
@@ -426,3 +499,13 @@ def vlookup(lookup_value, table_array, col_index_num, range_lookup=True):
     else:
         # error string
         return result_idx
+
+
+# def xlookup(value):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   xlookup-function-b7fd680e-6d10-43e6-84f9-88eae8bf5929
+
+
+# def xmatch(value):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   xmatch-function-d966da31-7a6b-4a13-a1c6-5a33ed6a0312

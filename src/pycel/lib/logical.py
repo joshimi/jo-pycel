@@ -10,20 +10,26 @@
 """
 Python equivalents of excel logical functions (bools)
 """
+import itertools as it
+from numbers import Number
+
+import numpy as np
 
 from pycel.excelutil import (
     ERROR_CODES,
     flatten,
+    has_array_arg,
     in_array_formula_context,
+    is_array_arg,
     NA_ERROR,
     VALUE_ERROR,
 )
 from pycel.lib.function_helpers import cse_array_wrapper, excel_helper
+from pycel.lib.lookup import ExcelCmp
 
 
 def _clean_logical(test):
     """For logicals that take one argument, clean via excel rules"""
-
     if test in ERROR_CODES:
         return test
 
@@ -35,7 +41,7 @@ def _clean_logical(test):
 
     if test is None:
         return False
-    elif isinstance(test, (bool, int, float)):
+    elif isinstance(test, (Number, np.bool_)):
         return bool(test)
     else:
         return VALUE_ERROR
@@ -43,7 +49,6 @@ def _clean_logical(test):
 
 def _clean_logicals(*args):
     """For logicals that take more than one argument, clean via excel rules"""
-
     values = tuple(flatten(args))
 
     error = next((x for x in values if x in ERROR_CODES), None)
@@ -57,10 +62,9 @@ def _clean_logicals(*args):
         return VALUE_ERROR if len(values) == 0 else values
 
 
-def x_and(*args):
-    # Excel reference: https://support.office.com/en-us/article/
+def and_(*args):
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   and-function-5f19b2e8-e1df-4408-897a-ce285a19e9d9
-
     values = _clean_logicals(*args)
     if isinstance(values, str):
         # return error code
@@ -69,39 +73,45 @@ def x_and(*args):
         return all(values)
 
 
+# def false(value):
+    # A "compatibility function", needed only for use with other spreadsheet programs
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   false-function-2d58dfa5-9c03-4259-bf8f-f0ae14346904
+
+
 @excel_helper(cse_params=(0, 1, 2), err_str_params=0)
-def x_if(test, true_value, false_value=0):
-    # Excel reference: https://support.office.com/en-us/article/
+def if_(test, true_value, false_value=0):
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   IF-function-69AED7C9-4E8A-4755-A9BC-AA8BBFF73BE2
+    cleaned = _clean_logical(test)
 
-    test = _clean_logical(test)
-
-    if isinstance(test, str):
+    if isinstance(cleaned, str):
         # return error code
-        return test
+        return cleaned
     else:
-        return true_value if test else false_value
+        return true_value if cleaned else false_value
 
 
 def iferror(arg, value_if_error):
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   IFERROR-function-C526FD07-CAEB-47B8-8BB6-63F3E417F611
-
-    if in_array_formula_context and (
-            isinstance(arg, tuple) or isinstance(value_if_error, tuple)):
+    if in_array_formula_context and has_array_arg(arg, value_if_error):
         return cse_array_wrapper(iferror, (0, 1))(arg, value_if_error)
-    elif arg in ERROR_CODES or isinstance(arg, tuple):
+    elif arg in ERROR_CODES or is_array_arg(arg):
         return 0 if value_if_error is None else value_if_error
     else:
         return arg
 
 
-# IFNA function
-# Excel 2013
-# Returns the value you specify if the expression resolves to #N/A,
-# otherwise returns the result of the expression
-# Excel reference: https://support.office.com/en-us/article/
-#   ifna-function-6626c961-a569-42fc-a49d-79b4951fd461
+def ifna(arg, value_if_na):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   ifna-function-6626c961-a569-42fc-a49d-79b4951fd461
+    if in_array_formula_context and has_array_arg(arg, value_if_na):
+        return cse_array_wrapper(ifna, (0, 1))(arg, value_if_na)
+    elif arg == NA_ERROR or is_array_arg(arg):
+        return 0 if value_if_na is None else value_if_na
+    else:
+        return arg
 
 
 def ifs(*args):
@@ -109,9 +119,12 @@ def ifs(*args):
     # Excel 2016
     # Checks whether one or more conditions are met and returns a value that
     # corresponds to the first TRUE condition.
-    # Excel reference: https://support.office.com/en-us/article/
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   ifs-function-36329a26-37b2-467c-972b-4a39bd951d45
     if not len(args) % 2:
+        if in_array_formula_context and any(isinstance(a, tuple) for a in args):
+            return cse_array_wrapper(ifs, tuple(range(len(args))))(*args)
+
         for test, value in zip(args[::2], args[1::2]):
 
             if test in ERROR_CODES:
@@ -123,32 +136,27 @@ def ifs(*args):
                 else:
                     return VALUE_ERROR
 
-            elif not isinstance(test, (bool, int, float, type(None))):
-                return VALUE_ERROR
-
             if test:
                 return value
 
     return NA_ERROR
 
 
-def x_not(value):
-    # Excel reference: https://support.office.com/en-us/article/
+def not_(value):
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   not-function-9cfc6011-a054-40c7-a140-cd4ba2d87d77
+    cleaned = _clean_logical(value)
 
-    value = _clean_logical(value)
-
-    if isinstance(value, str):
+    if isinstance(cleaned, str):
         # return error code
-        return value
+        return cleaned
     else:
-        return not value
+        return not cleaned
 
 
-def x_or(*args):
-    # Excel reference: https://support.office.com/en-us/article/
+def or_(*args):
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   or-function-7d17ad14-8700-4281-b308-00b131e22af0
-
     values = _clean_logicals(*args)
     if isinstance(values, str):
         # return error code
@@ -157,17 +165,35 @@ def x_or(*args):
         return any(values)
 
 
-# SWITCH function
-# Excel 2016
-# Evaluates an expression against a list of values and returns the result
-# corresponding to the first matching value. If there is no match, an optional
-# default value may be returned.
-# Excel reference: https://support.office.com/en-us/article/
-#   switch-function-47ab33c0-28ce-4530-8a45-d532ec4aa25e
+@excel_helper(cse_params=-1)
+def switch(lookup_value, *args):
+    # Evaluates an expression against a list of values and returns the result
+    # corresponding to the first matching value. If there is no match, an optional
+    # default value may be returned.
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   switch-function-47ab33c0-28ce-4530-8a45-d532ec4aa25e
+    if len(args) < 2:
+        return VALUE_ERROR
+
+    lookup_value = ExcelCmp(lookup_value)
+    for to_match, result in zip(it.islice(args, 0, None, 2), it.islice(args, 1, None, 2)):
+        to_match = ExcelCmp(to_match)
+        if to_match == lookup_value:
+            return result
+
+    if len(args) % 2:
+        return args[-1]
+    return NA_ERROR
 
 
-def x_xor(*args):
-    # Excel reference: https://support.office.com/en-us/article/
+# def true(value):
+    # A "compatibility function", needed only for use with other spreadsheet programs
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   true-function-7652c6e3-8987-48d0-97cd-ef223246b3fb
+
+
+def xor_(*args):
+    # Excel reference: https://support.microsoft.com/en-us/office/
     #   xor-function-1548d4c2-5e47-4f77-9a92-0533bba14f37
     values = _clean_logicals(*args)
     if isinstance(values, str):
@@ -175,3 +201,11 @@ def x_xor(*args):
         return values
     else:
         return sum(bool(v) for v in values) % 2
+
+
+# Older mappings for excel functions that match Python built-in and keywords
+x_and = and_
+x_if = if_
+x_not = not_
+x_or = or_
+x_xor = xor_
