@@ -15,6 +15,7 @@ import sys
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
 
 import numpy as np
+from scipy.stats import norm
 
 from pycel.excelutil import (
     coerce_to_number,
@@ -227,6 +228,11 @@ def mod(number, divisor):
     return number % divisor
 
 
+@excel_math_func
+def normsdist(x):
+    return norm.cdf(x, 0, 1)
+
+
 @excel_helper(cse_params=None, err_str_params=-1, number_params=0)
 def npv(rate, *args):
     # Excel reference: https://support.microsoft.com/en-us/office/
@@ -257,6 +263,24 @@ def power(number, power):
         return number ** power
     except ZeroDivisionError:
         return DIV0
+
+
+def product(*args):
+    # Excel reference: https://support.microsoft.com/en-us/office/
+    #   product-function-8e6b5b24-90ee-4650-aeec-80982a0512ce
+
+    # find any errors
+    error = next((i for i in flatten(args) if i in ERROR_CODES), None)
+    if error:
+        return error
+
+    # put the values into numpy vectors
+    values = np.array([x if isinstance(x, (float, int)) and
+                       not isinstance(x, bool) else 0
+                       for x in flatten(args)])
+
+    # return the sum product
+    return float(np.prod(values))
 
 
 @excel_math_func
@@ -380,7 +404,7 @@ def sumproduct(*args):
                     for x in args
                 )
                 try:
-                    return prod(values)
+                    return float(prod(values))
                 except TypeError:
                     pass
             return VALUE_ERROR
@@ -395,7 +419,7 @@ def sumproduct(*args):
         for x in flatten(arg)) for arg in args))
 
     # return the sum product
-    return np.sum(np.prod(values, axis=0))
+    return float(np.sum(np.prod(values, axis=0)))
 
 
 @excel_math_func
