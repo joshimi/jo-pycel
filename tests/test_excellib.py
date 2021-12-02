@@ -31,9 +31,11 @@ from pycel.excellib import (
     ln,
     log,
     mod,
+    normsdist,
     npv,
     odd,
     power,
+    product,
     pv,
     round_,
     rounddown,
@@ -315,6 +317,17 @@ class TestMod:
 
 
 @pytest.mark.parametrize(
+    'param, result', (
+        (1, 0.8413447460685429),
+        (2, 0.9772498680518208),
+    )
+)
+def test_normsdist(param, result):
+    # we are currently using mean=0 and stddev=1
+    assert result == normsdist(param)
+
+
+@pytest.mark.parametrize(
     'data, expected', (
         ((0.1, ((-10000,), (3000,), (4200,), (6800,))), 1188.44),
         ((0.08, ((1, 3), (2, 4))), 8.02572628005743),
@@ -370,6 +383,20 @@ def test_power(data, expected):
         assert result == expected
     else:
         assert result == pytest.approx(expected, rel=1e-3)
+
+
+@pytest.mark.parametrize(
+    'args, result', (
+        ((((1, 2), (3, 4)), ((1, 3), (2, 4))), 576),
+        ((((1, 2), (3, None)), ((1, 3), (2, 4))), 144),
+        ((((1, 2), (3, 4)), ((1, 3), (2, '4'))), 144),
+        ((((1, 2), (3, 4)), ((1, 3), (2, True))), 144),
+        ((((1, NAME_ERROR), (3, 4)), ((1, 3), (2, 4))), NAME_ERROR),
+        ((((1, 2), (3, 4)), ((1, 3), (NAME_ERROR, 4))), NAME_ERROR),
+    )
+)
+def test_product(args, result):
+    assert product(*args) == result
 
 
 @pytest.mark.parametrize(
