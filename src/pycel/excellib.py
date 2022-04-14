@@ -276,7 +276,7 @@ def product(*args):
 
     # put the values into numpy vectors
     values = np.array([x if isinstance(x, (float, int)) and
-                       not isinstance(x, bool) else 0
+                       not isinstance(x, bool) else 1
                        for x in flatten(args)])
 
     # return the sum product
