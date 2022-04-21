@@ -23,6 +23,7 @@ from pycel.lib.text import (
     concatenate,
     exact,
     find,
+    hyperlink,
     left,
     len_,
     lower,
@@ -95,6 +96,17 @@ def test_exact(text1, text2, expected):
 )
 def test_find(to_find, find_in, expected):
     assert find(to_find, find_in) == expected
+
+
+@pytest.mark.parametrize(
+    'link, title, expected', (
+        ('', 'title', ''),
+        ('http://joshuins.com', '', "<a href='http://joshuins.com'>http://joshuins.com</a>"),
+        ('http://joshuins.com', 'Joshu', "<a href='http://joshuins.com'>Joshu</a>"),
+    )
+)
+def test_hyperlink(link, title, expected):
+    assert hyperlink(link, title) == expected
 
 
 @pytest.mark.parametrize(
