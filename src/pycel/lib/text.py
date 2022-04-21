@@ -552,6 +552,13 @@ def right(text, num_chars=1):
     #   search-searchb-functions-9ab04538-0e55-4719-a72e-b6f54513b495
 
 
+@excel_helper(cse_params=-1, str_params=(0, 1))
+def hyperlink(link, title):
+    if link:
+        return f"<a href='{link}'>{title or link}</a>"
+    return ""
+
+
 @excel_helper(cse_params=-1, str_params=(0, 1, 2))
 def substitute(text, old_text, new_text, instance_num=None):
     # Excel reference: https://support.microsoft.com/en-us/office/
