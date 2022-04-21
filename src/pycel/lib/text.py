@@ -15,6 +15,7 @@ import itertools as it
 import locale
 import re
 from enum import Enum
+from html import escape
 from typing import Iterable, List
 
 from pycel.excelutil import (
@@ -555,7 +556,7 @@ def right(text, num_chars=1):
 @excel_helper(cse_params=-1, str_params=(0, 1))
 def hyperlink(link, title):
     if link:
-        return f"<a href='{link}'>{title or link}</a>"
+        return f'<a href="{escape(link)}">{title or link}</a>'
     return ""
 
 

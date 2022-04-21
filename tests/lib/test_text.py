@@ -101,8 +101,10 @@ def test_find(to_find, find_in, expected):
 @pytest.mark.parametrize(
     'link, title, expected', (
         ('', 'title', ''),
-        ('http://joshuins.com', '', "<a href='http://joshuins.com'>http://joshuins.com</a>"),
-        ('http://joshuins.com', 'Joshu', "<a href='http://joshuins.com'>Joshu</a>"),
+        ('http://joshuins.com', '', '<a href="http://joshuins.com">http://joshuins.com</a>'),
+        ('http://joshuins.com', 'Joshu', '<a href="http://joshuins.com">Joshu</a>'),
+        ('https://joshuins.com', '', '<a href="https://joshuins.com">https://joshuins.com</a>'),
+        ('https://joshuins.com', 'Joshu', '<a href="https://joshuins.com">Joshu</a>'),
     )
 )
 def test_hyperlink(link, title, expected):
