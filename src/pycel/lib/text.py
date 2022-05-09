@@ -503,7 +503,8 @@ def numbervalue(text, decimal_separator=".", group_separator=","):
     if decimal_separator and group_separator:
         if decimal_separator == group_separator:
             return VALUE_ERROR
-        if clean_text.rfind(group_separator) > clean_text.rfind(decimal_separator):
+        last_decimal = clean_text.rfind(decimal_separator)
+        if last_decimal > 0 and clean_text.rfind(group_separator) > last_decimal:
             return VALUE_ERROR
     if group_separator:
         clean_text = clean_text.replace(group_separator, "")
