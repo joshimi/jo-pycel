@@ -199,7 +199,10 @@ def test_mid(text, start, count, expected):
         ('1@34', '', '', VALUE_ERROR),
         ('12a', '', '', VALUE_ERROR),
         ('3.5%', '.', None, 0.035),
+        ('%%', '.', None, 0),
         ('9%%', '.', None, 0.0009),
+        ('1.000.00', '.', '..', VALUE_ERROR),
+        ('1,000.00', '..', '.', VALUE_ERROR),
     )
 )
 def test_numbervalue(text, decimal_separator, group_separator, expected):

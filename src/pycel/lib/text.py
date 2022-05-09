@@ -493,42 +493,41 @@ def mid(text, start_num, num_chars):
 def numbervalue(text, decimal_separator=".", group_separator=","):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   numbervalue-function-1b05c8cf-2bfa-4437-af70-596c7ea7d879
-    if not text:
-        return 0
+    decimal_separator = decimal_separator[0] if decimal_separator else ""
+    group_separator = group_separator[0] if group_separator else ""
     clean_text = text.replace(" ", "")
 
     # TODO:
     # If the decimal_separator and group_separator arguments are not specified,
     # separators from the current locale are used.
-    if(decimal_separator and
-       group_separator and
-       clean_text.rfind(group_separator) > clean_text.rfind(decimal_separator)):
-        return VALUE_ERROR
+    if decimal_separator and group_separator:
+        if decimal_separator == group_separator:
+            return VALUE_ERROR
+        if clean_text.rfind(group_separator) > clean_text.rfind(decimal_separator):
+            return VALUE_ERROR
     if group_separator:
-        clean_text = clean_text.replace(group_separator[0], "")
+        clean_text = clean_text.replace(group_separator, "")
     if decimal_separator:
         if clean_text.count(decimal_separator) > 1:
             return VALUE_ERROR
-        clean_text = clean_text.replace(decimal_separator[0], ".")
+        clean_text = clean_text.replace(decimal_separator, ".")
+
+    # clean '%' if located at the end of the text input
+    with_percentage_chars = clean_text
+    clean_text = clean_text.rstrip('%')
+    number_of_percentage_chars = len(with_percentage_chars) - len(clean_text)
+
     if not clean_text:
         return 0
 
     try:
-        # calculate '%' if located at the end of the text input
-        number_of_percentage_chars = 0
-        for text_char in clean_text[::-1]:
-            if text_char == '%':
-                number_of_percentage_chars += 1
-            else:
-                break
-        if number_of_percentage_chars:
-            clean_text = clean_text[0:-(number_of_percentage_chars)]
         rc = float(clean_text)
-        for _ in range(number_of_percentage_chars):
-            rc = rc * 0.01
-        return rc
-    except (ValueError, TypeError):
+    except ValueError:
         return VALUE_ERROR
+    # calculate '%' chars found at the end of the text input
+    for _ in range(number_of_percentage_chars):
+        rc = rc * 0.01
+    return rc
 
 
 # def phonetic(text):
