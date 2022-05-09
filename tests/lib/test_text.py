@@ -28,6 +28,7 @@ from pycel.lib.text import (
     len_,
     lower,
     mid,
+    numbervalue,
     replace,
     right,
     substitute,
@@ -181,6 +182,28 @@ def test_lower(text, expected):
 )
 def test_mid(text, start, count, expected):
     assert mid(text, start, count) == expected
+
+
+@pytest.mark.parametrize(
+    'text, decimal_separator, group_separator, expected', (
+        ('', '', '', 0),
+        (None, '', '', 0),
+        ('1', '', '', 1.0),
+        ('-1', '', '', -1.0),
+        ('1', '', '', 1.0),
+        ('12.5', '', '', 12.5),
+        ('    3  ', '', '', 3.0),
+        ('1@34', '@', '', 1.34),
+        ('1_000@34', '@', '_', 1000.34),
+        ('1,000.,34', '.', ',', VALUE_ERROR),
+        ('1@34', '', '', VALUE_ERROR),
+        ('12a', '', '', VALUE_ERROR),
+        ('3.5%', '.', None, 0.035),
+        ('9%%', '.', None, 0.0009),
+    )
+)
+def test_numbervalue(text, decimal_separator, group_separator, expected):
+    assert numbervalue(text, decimal_separator, group_separator) == expected
 
 
 @pytest.mark.parametrize(
