@@ -32,6 +32,8 @@ from pycel.lib.stats import (
     averageif,
     averageifs,
     count,
+    counta,
+    countblank,
     countif,
     countifs,
     forecast,
@@ -122,6 +124,32 @@ def test_count():
         'FALSE',
     )
     assert count(data, data[3], data[5], data[7])
+
+
+@pytest.mark.parametrize(
+    'value, expected', (
+        (((7, 10, 13, 25), ), 4),
+        (((7, 'e', 13, ''), ), 4),
+        (((7, 25, None, 25),), 3),
+        (((DIV0, 0, 0, 0),), 4),
+        ((None), 0),
+    )
+)
+def test_counta(value, expected):
+    assert counta(value) == expected
+
+
+@pytest.mark.parametrize(
+    'value, expected', (
+        (((7, 10, 13, 25), ), 0),
+        (((7, 'e', 13, 0), ), 0),
+        (((7, 25, '', 25),), 1),
+        (((DIV0, None, 0, 0),), 1),
+        ((None, ''), 2),
+    )
+)
+def test_countblank(value, expected):
+    assert countblank(value) == expected
 
 
 @pytest.mark.parametrize(
