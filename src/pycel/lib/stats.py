@@ -569,10 +569,9 @@ def median(*args):
     data = _numerics(*args)
     if isinstance(data, str):
         return data
-    elif len(data) < 1:
+    if len(data) < 1:
         return VALUE_ERROR
-    else:
-        return(st.median(data))
+    return(st.median(data))
 
 
 def min_(*args):
