@@ -42,6 +42,7 @@ from pycel.lib.stats import (
     linest,
     max_,
     maxifs,
+    median,
     min_,
     minifs,
     slope,
@@ -412,6 +413,19 @@ def test_linest(X, Y, const, stats, expected):
 def test_max_min(data, max_expected, min_expected):
     assert max_(data) == max_expected
     assert min_(data) == min_expected
+
+
+@pytest.mark.parametrize(
+    'data, expected', (
+        ([], VALUE_ERROR),
+        (['a', 'b', 'c'], VALUE_ERROR),
+        ([1, 2, 'a'], 1.5),
+        ([2, 3, 4, 5, 6], 4),
+        ([1, 2, 3, 4, 5, 6], 3.5),
+    )
+)
+def test_median(data, expected):
+    assert median(data) == expected
 
 
 @pytest.mark.parametrize(
