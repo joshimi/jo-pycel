@@ -14,6 +14,7 @@ import math
 from heapq import nlargest, nsmallest
 
 import numpy as np
+import statistics as st
 
 from pycel.excellib import _numerics
 from pycel.excelutil import (
@@ -562,9 +563,16 @@ def maxifs(max_range, *args):
         return 0
 
 
-# def median(value):
+def median(*args):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   median-function-d0916313-4753-414c-8537-ce85bdd967d2
+    data = _numerics(*args)
+    if isinstance(data, str):
+        return data
+    elif len(data) < 1:
+        return VALUE_ERROR
+    else:
+        return(st.median(data))
 
 
 def min_(*args):
