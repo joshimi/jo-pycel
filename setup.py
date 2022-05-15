@@ -47,7 +47,7 @@ with open('test-requirements.txt') as f:
 
 setup(
     name='pycel',
-    version='1.1.7',
+    version='1.1.8',
     packages=find_packages('src'),
     package_dir={'': 'src'},
     description='A library for compiling excel spreadsheets to python code '

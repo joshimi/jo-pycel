@@ -174,9 +174,13 @@ def column(ref):
         return ref.col_idx
 
 
-# def columns(value):
+def columns(table_array):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   columns-function-4e8e7b4e-e603-43e8-b177-956088fa48ca
+    if not list_like(table_array):
+        return NA_ERROR
+
+    return max([len(row) for row in table_array])
 
 
 # def filter(value):
@@ -431,9 +435,13 @@ def row(ref):
         return ref.row
 
 
-# def rows(value):
+def rows(table_array):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   rows-function-b592593e-3fc2-47f2-bec1-bda493811597
+    if not list_like(table_array):
+        return NA_ERROR
+
+    return len(table_array)
 
 
 # def rtd(value):

@@ -28,6 +28,7 @@ from pycel.lib.lookup import (
     _match,
     choose,
     column,
+    columns,
     hlookup,
     index,
     indirect,
@@ -35,6 +36,7 @@ from pycel.lib.lookup import (
     match,
     offset,
     row,
+    rows,
     vlookup,
 )
 
@@ -120,6 +122,19 @@ def test_column(address, expected):
         assert 1 == next(iter(result))
     else:
         assert expected == result
+
+
+@pytest.mark.parametrize(
+    'table_array, expected', (
+        ("", '#N/A'),
+        (((1,),), 1),
+        (((1,), (2,)), 1),
+        (((1, 2, None, 4,),), 4),
+        (((1, 2, 'text'), ('a', None, 'c'),), 3),
+    )
+)
+def test_columns(table_array, expected):
+    assert columns(table_array) == expected
 
 
 @pytest.mark.parametrize(
@@ -564,6 +579,20 @@ def test_row(address, expected):
         assert 1 == next(iter(result))
     else:
         assert expected == result
+
+
+@pytest.mark.parametrize(
+    'table_array, expected', (
+        ("", '#N/A'),
+        (((1,)), 1),
+        (((1,), (2,)), 2),
+        (((1,), (2,), (3,), (4,)), 4),
+        (((1, 1), (2, 2)), 2),
+        (((1, 2, 'text'), ('a', 'b', 'c')), 2),
+    )
+)
+def test_rows(table_array, expected):
+    assert rows(table_array) == expected
 
 
 @pytest.mark.parametrize(
