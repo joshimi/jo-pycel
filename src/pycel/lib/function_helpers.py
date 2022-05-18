@@ -141,7 +141,7 @@ def apply_meta(f, meta=None, name_space=None):
         # process parameters of any type (Cell, Range, "regular" values)
         any_params = meta['any_params']
         if any_params:
-            f = any_type_wrapper(f, name_space)
+            f = cell_or_other_wrapper(f, name_space)
 
     return f, meta
 
@@ -329,21 +329,18 @@ def refs_wrapper(f, name_space, param_indices=None):
     return wrapper
 
 
-def any_type_wrapper(f, name_space):
+def cell_or_other_wrapper(f, name_space):
     """wrapper to process ranges AND cells AND regular arguments
 
     :param f: function to wrap
     :return: wrapped function, with list arguments processed
     """
-    _R_ = name_space.get('_R_')
     _C_ = name_space.get('_C_')
 
     def resolve_args(args):
         for _, arg in enumerate(args):
             if isinstance(arg, AddressCell):
                 yield _C_(arg.address)
-            elif isinstance(arg, AddressRange):
-                yield _R_(arg.address)
             else:
                 yield arg
 
