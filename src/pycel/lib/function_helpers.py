@@ -38,7 +38,8 @@ def excel_helper(cse_params=None,
                  err_str_params=-1,
                  number_params=None,
                  str_params=None,
-                 ref_params=None):
+                 ref_params=None,
+                 any_params=None):
     """ Decorator to annotate a function with info on how to process params
 
     All parameters are encoded as:
@@ -70,6 +71,7 @@ def excel_helper(cse_params=None,
             number_params=number_params,
             str_params=str_params,
             ref_params=ref_params,
+            any_params=any_params,
         ))
         return f
     return mark
@@ -135,6 +137,11 @@ def apply_meta(f, meta=None, name_space=None):
             if ref_params is None:
                 ref_params = set()
             f = refs_wrapper(f, name_space, ref_params)
+
+        # process parameters of any type (Cell, Range, "regular" values)
+        any_params = meta['any_params']
+        if any_params:
+            f = any_type_wrapper(f, name_space)
 
     return f, meta
 
@@ -318,6 +325,31 @@ def refs_wrapper(f, name_space, param_indices=None):
     @functools.wraps(f)
     def wrapper(*args):
         return f(*tuple(resolve_args(args)))
+
+    return wrapper
+
+
+def any_type_wrapper(f, name_space):
+    """wrapper to process ranges AND cells AND regular arguments
+
+    :param f: function to wrap
+    :return: wrapped function, with list arguments processed
+    """
+    _R_ = name_space.get('_R_')
+    _C_ = name_space.get('_C_')
+
+    def resolve_args(args):
+        for _, arg in enumerate(args):
+            if isinstance(arg, AddressCell):
+                yield _C_(arg.address)
+            elif isinstance(arg, AddressRange):
+                yield _R_(arg.address)
+            else:
+                yield arg
+
+    @functools.wraps(f)
+    def wrapper(*args):
+        return f(list(resolve_args(args)))
 
     return wrapper
 
