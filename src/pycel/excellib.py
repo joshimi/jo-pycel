@@ -265,6 +265,7 @@ def power(number, power):
         return DIV0
 
 
+@excel_helper(any_params=True)
 def product(*args):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   product-function-8e6b5b24-90ee-4650-aeec-80982a0512ce
@@ -340,6 +341,7 @@ def sign(value):
     return -1 if value < 0 else int(bool(value))
 
 
+@excel_helper(any_params=True)
 def sum_(*args):
     data = _numerics(*args)
     if isinstance(data, str):
