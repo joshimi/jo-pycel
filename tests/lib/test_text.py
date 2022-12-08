@@ -31,6 +31,7 @@ from pycel.lib.text import (
     numbervalue,
     replace,
     right,
+    search,
     substitute,
     text as text_func,
     trim,
@@ -280,6 +281,18 @@ def test_replace(expected, old_text, start_num, num_chars, new_text):
 )
 def test_right(text, num_chars, expected):
     assert right(text, num_chars) == expected
+
+
+@pytest.mark.parametrize(
+    'find_text, within_text, start_num, expected', (
+        ('e', 'Statements', 1, 5),
+        ('e', 'Statements', 6, 7),
+        ('e', 'AAAAAA', 1, VALUE_ERROR),
+        ('margin', 'Profit Margin', 1, 8),
+    )
+)
+def test_search(find_text, within_text, start_num, expected):
+    assert search(find_text, within_text, start_num) == expected
 
 
 @pytest.mark.parametrize(

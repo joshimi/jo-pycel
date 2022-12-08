@@ -580,10 +580,16 @@ def right(text, num_chars=1):
     #   right-rightb-functions-240267ee-9afa-4639-a02b-f19e1786cf2f
 
 
-# def search(text):
+@excel_helper(cse_params=(0, 1, 2), number_params=2, str_params=(0, 1))
+def search(find_text, within_text, start_num=1):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   search-searchb-functions-9ab04538-0e55-4719-a72e-b6f54513b495
-
+    print({find_text}, {within_text}, {start_num})
+    found = within_text.lower().find(find_text.lower(), start_num - 1)
+    if found == -1:
+        return VALUE_ERROR
+    else:
+        return found + 1
 
 # def searchb(text):
     # Excel reference: https://support.microsoft.com/en-us/office/
