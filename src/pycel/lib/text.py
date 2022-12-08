@@ -584,7 +584,6 @@ def right(text, num_chars=1):
 def search(find_text, within_text, start_num=1):
     # Excel reference: https://support.microsoft.com/en-us/office/
     #   search-searchb-functions-9ab04538-0e55-4719-a72e-b6f54513b495
-    print({find_text}, {within_text}, {start_num})
     found = within_text.lower().find(find_text.lower(), start_num - 1)
     if found == -1:
         return VALUE_ERROR
