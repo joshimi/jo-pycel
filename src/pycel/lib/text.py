@@ -588,8 +588,7 @@ def search(find_text, within_text, start_num=1):
     found = within_text.lower().find(find_text.lower(), start_num - 1)
     if found == -1:
         return VALUE_ERROR
-    else:
-        return found + 1
+    return found + 1
 
 # def searchb(text):
     # Excel reference: https://support.microsoft.com/en-us/office/
